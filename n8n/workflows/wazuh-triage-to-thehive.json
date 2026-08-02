@@ -1,0 +1,416 @@
+{
+  "name": "Aigis-Detect - Wazuh -> Agente -> TheHive/Slack/Telegram",
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "Cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "minutes", "minutesInterval": 15 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "name": "Buscar alertas nuevas en Elastic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://elasticsearch:9200/wazuh-alerts-*/_search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": {\n    \"range\": { \"@timestamp\": { \"gte\": \"now-16m\" } }\n  },\n  \"size\": 5,\n  \"sort\": [{ \"@timestamp\": \"asc\" }]\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n3",
+      "name": "Separar alertas",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [440, 0],
+      "parameters": {
+        "fieldToSplitOut": "hits.hits",
+        "options": {}
+      }
+    },
+    {
+      "id": "n15",
+      "name": "Limitar items por ejecución",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "parameters": {
+        "maxItems": 5,
+        "keep": "firstItems"
+      }
+    },
+    {
+      "id": "n16",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [880, 0],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "n18",
+      "name": "Fin del ciclo",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [880, -260],
+      "parameters": {}
+    },
+    {
+      "id": "n17",
+      "name": "Fin - severidad normal",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2640, -20],
+      "parameters": {}
+    },
+    {
+      "id": "n4",
+      "name": "Redis - ya procesada?",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "=aigis:dedup:{{$json._id}}"
+      }
+    },
+    {
+      "id": "n5",
+      "name": "Ya procesada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 0],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-empty",
+              "leftValue": "={{$json.value}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "empty" }
+            }
+          ],
+          "options": { "caseSensitive": true, "typeValidation": "strict" }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n6",
+      "name": "Redis - marcar procesada",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1100, -120],
+      "parameters": {
+        "operation": "set",
+        "key": "=aigis:dedup:{{$('Separar alertas').item.json._id}}",
+        "value": "1",
+        "expire": true,
+        "ttl": 86400
+      }
+    },
+    {
+      "id": "n7",
+      "name": "Armar AlertInput",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1320, -120],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "alert_id",
+              "type": "string",
+              "value": "={{$('Separar alertas').item.json._id}}"
+            },
+            {
+              "id": "a2",
+              "name": "rule_id",
+              "type": "string",
+              "value": "={{$('Separar alertas').item.json._source.rule?.id || ''}}"
+            },
+            {
+              "id": "a3",
+              "name": "rule_description",
+              "type": "string",
+              "value": "={{$('Separar alertas').item.json._source.rule?.description || ''}}"
+            },
+            {
+              "id": "a4",
+              "name": "timestamp",
+              "type": "string",
+              "value": "={{$('Separar alertas').item.json._source['@timestamp']}}"
+            },
+            {
+              "id": "a5",
+              "name": "agent_name",
+              "type": "string",
+              "value": "={{$('Separar alertas').item.json._source.agent?.name || ''}}"
+            },
+            {
+              "id": "a6",
+              "name": "raw",
+              "type": "object",
+              "value": "={{$('Separar alertas').item.json._source}}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n8",
+      "name": "Llamar agente /triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -120],
+      "parameters": {
+        "method": "POST",
+        "url": "http://agent:8080/triage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ alert_id: $json.alert_id, rule_id: $json.rule_id, rule_description: $json.rule_description, timestamp: $json.timestamp, agent_name: $json.agent_name, raw: $json.raw }) }}",
+        "options": {
+          "timeout": 2400000
+        }
+      }
+    },
+    {
+      "id": "n9",
+      "name": "Mapear severidad TheHive",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1760, -120],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "alert_id",
+              "type": "string",
+              "value": "={{$('Armar AlertInput').item.json.alert_id}}"
+            },
+            {
+              "id": "b2",
+              "name": "rule_description",
+              "type": "string",
+              "value": "={{$('Armar AlertInput').item.json.rule_description}}"
+            },
+            {
+              "id": "b3",
+              "name": "verdict",
+              "type": "string",
+              "value": "={{$json.verdict}}"
+            },
+            {
+              "id": "b4",
+              "name": "severity",
+              "type": "string",
+              "value": "={{$json.severity}}"
+            },
+            {
+              "id": "b5",
+              "name": "mitre_technique",
+              "type": "string",
+              "value": "={{$json.mitre_technique}}"
+            },
+            {
+              "id": "b6",
+              "name": "explanation",
+              "type": "string",
+              "value": "={{$json.explanation}}"
+            },
+            {
+              "id": "b7",
+              "name": "suggested_action",
+              "type": "string",
+              "value": "={{$json.suggested_action}}"
+            },
+            {
+              "id": "b8",
+              "name": "thehive_severity",
+              "type": "number",
+              "value": "={{ ({low:1, medium:2, high:3, critical:4})[$json.severity] || 2 }}"
+            },
+            {
+              "id": "b9",
+              "name": "is_high_severity",
+              "type": "boolean",
+              "value": "={{ ['high','critical'].includes($json.severity) }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n10",
+      "name": "Crear alerta en TheHive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, -120],
+      "parameters": {
+        "method": "POST",
+        "url": "http://thehive:9000/api/v1/alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{$env.THEHIVE_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'external', source: 'aigis-detect', sourceRef: $json.alert_id, title: ($json.rule_description || 'Alerta Wazuh') + ' — ' + $json.verdict, description: $json.explanation + '\\n\\nAcción sugerida: ' + $json.suggested_action, severity: $json.thehive_severity, tags: ['aigis-detect', 'verdict:' + $json.verdict, $json.mitre_technique ? ('mitre:' + $json.mitre_technique) : 'mitre:unknown'], tlp: 2, pap: 2 }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n11",
+      "name": "Slack - log completo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, -120],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SLACK_WEBHOOK_URL}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '*Aigis-Detect* — ' + $('Mapear severidad TheHive').item.json.verdict + ' (' + $('Mapear severidad TheHive').item.json.severity + ')\\nAlerta: ' + $('Mapear severidad TheHive').item.json.rule_description + '\\nTécnica: ' + ($('Mapear severidad TheHive').item.json.mitre_technique || 'N/A') + '\\n' + $('Mapear severidad TheHive').item.json.explanation }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n12",
+      "name": "Es alta severidad?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2420, -120],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-high",
+              "leftValue": "={{$('Mapear severidad TheHive').item.json.is_high_severity}}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "options": { "caseSensitive": true, "typeValidation": "strict" }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n13",
+      "name": "Telegram - alta severidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, -220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID_ONCALL, text: '🚨 Aigis-Detect — ' + ($('Mapear severidad TheHive').item.json.severity || '').toUpperCase() + '\\n' + $('Mapear severidad TheHive').item.json.rule_description + '\\nVeredicto: ' + $('Mapear severidad TheHive').item.json.verdict + '\\nTécnica: ' + ($('Mapear severidad TheHive').item.json.mitre_technique || 'N/A') + '\\n' + $('Mapear severidad TheHive').item.json.suggested_action }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n14",
+      "name": "Fin - alerta ya procesada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 140],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Cada 15 minutos": {
+      "main": [[{ "node": "Buscar alertas nuevas en Elastic", "type": "main", "index": 0 }]]
+    },
+    "Buscar alertas nuevas en Elastic": {
+      "main": [[{ "node": "Separar alertas", "type": "main", "index": 0 }]]
+    },
+    "Separar alertas": {
+      "main": [[{ "node": "Limitar items por ejecución", "type": "main", "index": 0 }]]
+    },
+    "Limitar items por ejecución": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Items": {
+      "main": [
+        [{ "node": "Fin del ciclo", "type": "main", "index": 0 }],
+        [{ "node": "Redis - ya procesada?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Redis - ya procesada?": {
+      "main": [[{ "node": "Ya procesada?", "type": "main", "index": 0 }]]
+    },
+    "Ya procesada?": {
+      "main": [
+        [{ "node": "Redis - marcar procesada", "type": "main", "index": 0 }],
+        [{ "node": "Fin - alerta ya procesada", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fin - alerta ya procesada": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Redis - marcar procesada": {
+      "main": [[{ "node": "Armar AlertInput", "type": "main", "index": 0 }]]
+    },
+    "Armar AlertInput": {
+      "main": [[{ "node": "Llamar agente /triage", "type": "main", "index": 0 }]]
+    },
+    "Llamar agente /triage": {
+      "main": [[{ "node": "Mapear severidad TheHive", "type": "main", "index": 0 }]]
+    },
+    "Mapear severidad TheHive": {
+      "main": [[{ "node": "Crear alerta en TheHive", "type": "main", "index": 0 }]]
+    },
+    "Crear alerta en TheHive": {
+      "main": [[{ "node": "Slack - log completo", "type": "main", "index": 0 }]]
+    },
+    "Slack - log completo": {
+      "main": [[{ "node": "Es alta severidad?", "type": "main", "index": 0 }]]
+    },
+    "Es alta severidad?": {
+      "main": [
+        [{ "node": "Telegram - alta severidad", "type": "main", "index": 0 }],
+        [{ "node": "Fin - severidad normal", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram - alta severidad": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Fin - severidad normal": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

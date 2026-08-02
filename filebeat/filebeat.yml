@@ -1,0 +1,28 @@
+# Filebeat lee las alertas del Wazuh Manager y las envía directo a
+# Elasticsearch, en formato ECS. Reemplaza al wazuh-indexer nativo.
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/ossec/logs/alerts/alerts.json
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      source: wazuh
+    fields_under_root: true
+
+processors:
+  - add_host_metadata: ~
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "wazuh-alerts-%{+yyyy.MM.dd}"
+
+setup.template.enabled: false
+setup.ilm.enabled: false
+
+logging.level: info
+logging.to_files: false
+logging.to_stderr: true

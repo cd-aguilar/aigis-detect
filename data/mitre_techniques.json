@@ -1,0 +1,58 @@
+{
+  "T1059.001": {
+    "technique_id": "T1059.001",
+    "name": "Command and Scripting Interpreter: PowerShell",
+    "tactic": "Execution",
+    "wazuh_rule_id": "91823",
+    "note": "Wazuh ruleset 0915-win-powershell_rules.xml, rule 91823 (level 14): \"Powershell script used 'Invoke-command' cmdlet to execute code on remote computer\". Relacionadas: 91822 (level 12, ejecución de subscript local)."
+  },
+  "T1136.001": {
+    "technique_id": "T1136.001",
+    "name": "Create Account: Local Account",
+    "tactic": "Persistence",
+    "wazuh_rule_id": "92040",
+    "note": "Wazuh ruleset 0800-sysmon_id_1.xml, rule 92040 (level 12): comando de creación de usuario detectado vía Sysmon (proceso net.exe u origen equivalente)."
+  },
+  "T1110.001": {
+    "technique_id": "T1110.001",
+    "name": "Brute Force: Password Guessing",
+    "tactic": "Credential Access",
+    "wazuh_rule_id": "5760, 5763",
+    "note": "Wazuh ruleset 0095-sshd_rules.xml. Rule 5760 (level 5, tag T1110.001): fallo de autenticación SSH individual. Rule 5763 (level 10, compuesta por frecuencia: 8 intentos / 120s desde la misma IP, tag oficial de Wazuh T1110 padre): la que realmente dispara la alerta de fuerza bruta en la práctica."
+  },
+  "T1562.001": {
+    "technique_id": "T1562.001",
+    "name": "Impair Defenses: Disable or Modify Tools",
+    "tactic": "Defense Evasion",
+    "wazuh_rule_id": "505",
+    "note": "Wazuh ruleset 0015-ossec_rules.xml, rule 505 (level 3): \"Wazuh agent removed\" — agente de monitoreo desinstalado/eliminado. Relacionadas: 504 (agente desconectado), 506 (agente detenido)."
+  },
+  "T1046": {
+    "technique_id": "T1046",
+    "name": "Network Service Discovery",
+    "tactic": "Discovery",
+    "wazuh_rule_id": "40601",
+    "note": "Wazuh ruleset 0280-attack_rules.xml, rule 40601 (level 10, frecuencia 12 eventos / 90s): \"Network scan from same source ip\"."
+  },
+  "T1021.002": {
+    "technique_id": "T1021.002",
+    "name": "Remote Services: SMB/Windows Admin Shares",
+    "tactic": "Lateral Movement",
+    "wazuh_rule_id": "92105, 92650",
+    "note": "Wazuh ruleset 0810-sysmon_id_3.xml, rule 92105 (level 3): \"Possible suspicious access to Windows admin shares\". Escalada: 0840-win_event_channel.xml, rule 92650 (level 12): servicio creado desde ruta de Windows root, posible binario dropeado vía admin share."
+  },
+  "T1041": {
+    "technique_id": "T1041",
+    "name": "Exfiltration Over C2 Channel",
+    "tactic": "Exfiltration",
+    "wazuh_rule_id": null,
+    "note": "Sin regla nativa aplicable en el ruleset por defecto de Wazuh 4.7.5 para este homelab on-prem. Única coincidencia encontrada (rule 99028 en 0990-amazon-security-lake_rules.xml) es específica de AWS Security Groups, no aplica. Requiere regla custom en local_rules.xml (ej. correlación de volumen/destino de tráfico saliente) si se quiere detección real — pendiente."
+  },
+  "T1070.001": {
+    "technique_id": "T1070.001",
+    "name": "Indicator Removal: Clear Windows Event Logs",
+    "tactic": "Defense Evasion",
+    "wazuh_rule_id": "18118",
+    "note": "Wazuh ruleset 0220-msauth_rules.xml, rule 18118 (level 9): \"Windows audit log was cleared\"."
+  }
+}

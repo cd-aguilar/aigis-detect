@@ -1,0 +1,136 @@
+[
+  {
+    "case_id": "tp-01-powershell-c2",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1059.001",
+    "alert": {
+      "rule_id": "100950",
+      "rule_description": "PowerShell ejecutado con flags de ofuscacion (-enc) y conexion saliente inmediata",
+      "agent_name": "WIN-SRV01",
+      "raw": {
+        "full_log": "powershell.exe -nop -w hidden -enc <base64>, conexion saliente a 185.220.101.45:443, descarga de payload adicional"
+      }
+    }
+  },
+  {
+    "case_id": "tp-02-ssh-bruteforce-external",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1110.001",
+    "alert": {
+      "rule_id": "60204",
+      "rule_description": "60 intentos fallidos de SSH en 2 minutos desde IP externa, sin login exitoso",
+      "agent_name": "WIN-SRV01",
+      "raw": { "source_ip": "203.0.113.77", "failed_attempts": 60, "window_seconds": 120 }
+    }
+  },
+  {
+    "case_id": "tp-03-cuenta-local-sospechosa",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1136.001",
+    "alert": {
+      "rule_id": "60134",
+      "rule_description": "Cuenta local nueva creada 'svc_backup2' fuera de horario laboral (03:14 AM), sin ticket de cambio asociado",
+      "agent_name": "WIN-SRV01",
+      "raw": { "account_name": "svc_backup2", "created_by": "SYSTEM", "time_of_day": "03:14" }
+    }
+  },
+  {
+    "case_id": "tp-04-defender-deshabilitado",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1562.001",
+    "alert": {
+      "rule_id": "60250",
+      "rule_description": "Modificacion de registro deshabilitando Windows Defender real-time protection, ejecutado por proceso no firmado",
+      "agent_name": "WIN-SRV01",
+      "raw": { "registry_key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\DisableRealtimeMonitoring", "value": "1", "process": "unsigned_tool.exe" }
+    }
+  },
+  {
+    "case_id": "tp-05-borrado-event-log",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1070.001",
+    "alert": {
+      "rule_id": "60070",
+      "rule_description": "Windows Event Log de seguridad borrado manualmente (wevtutil cl) inmediatamente despues de un login administrativo fuera de horario",
+      "agent_name": "WIN-SRV01",
+      "raw": { "command": "wevtutil cl Security", "user": "admin_temp", "time_of_day": "02:47" }
+    }
+  },
+  {
+    "case_id": "tp-06-exfiltracion-dominio-nuevo",
+    "expected_verdict": "TRUE_POSITIVE",
+    "expected_mitre": "T1041",
+    "alert": {
+      "rule_id": "60310",
+      "rule_description": "Transferencia saliente de 4.2GB hacia dominio recien registrado (creado hace 3 dias), fuera de los servidores de backup conocidos",
+      "agent_name": "WIN-SRV01",
+      "raw": { "bytes_out": 4200000000, "destination_domain": "cdn-update-service.top", "domain_age_days": 3 }
+    }
+  },
+  {
+    "case_id": "fp-01-instalacion-paquete-autorizada",
+    "expected_verdict": "FALSE_POSITIVE",
+    "expected_mitre": null,
+    "alert": {
+      "rule_id": "5501",
+      "rule_description": "Nueva instalacion de paquete via apt: postgresql-client, ejecutado por usuario admin dentro de ventana de mantenimiento programada",
+      "agent_name": "LNX-DB01",
+      "raw": { "package": "postgresql-client", "user": "admin", "maintenance_window": true, "change_ticket": "CHG-4471" }
+    }
+  },
+  {
+    "case_id": "fp-02-cuenta-servicio-con-ticket",
+    "expected_verdict": "FALSE_POSITIVE",
+    "expected_mitre": null,
+    "alert": {
+      "rule_id": "60134",
+      "rule_description": "Cuenta local nueva creada 'svc_monitoring' durante horario laboral, ejecutada por cuenta de servicio de IT con ticket de cambio aprobado",
+      "agent_name": "WIN-SRV02",
+      "raw": { "account_name": "svc_monitoring", "created_by": "it_admin", "change_ticket": "CHG-4502", "time_of_day": "10:32" }
+    }
+  },
+  {
+    "case_id": "fp-03-scan-vulnerabilidades-autorizado",
+    "expected_verdict": "FALSE_POSITIVE",
+    "expected_mitre": "T1046",
+    "alert": {
+      "rule_id": "60088",
+      "rule_description": "Escaneo de puertos detectado desde host interno 10.0.9.15, coincide con IP del scanner de vulnerabilidades corporativo (Nessus), dentro de la ventana de escaneo mensual programada",
+      "agent_name": "WIN-SRV03",
+      "raw": { "source_ip": "10.0.9.15", "known_scanner": true, "scan_window": "mensual programado" }
+    }
+  },
+  {
+    "case_id": "bd-01-ssh-bruteforce-interno-exitoso",
+    "expected_verdict": "BORDERLINE",
+    "expected_mitre": "T1110.001",
+    "alert": {
+      "rule_id": "60122",
+      "rule_description": "Multiples intentos fallidos de SSH seguidos de login exitoso, origen IP interna sin contexto de usuario esperado",
+      "agent_name": "WIN-SRV01",
+      "raw": { "source_ip": "10.0.5.23", "failed_attempts": 8, "success": true }
+    }
+  },
+  {
+    "case_id": "bd-02-smb-lateral-par-nuevo",
+    "expected_verdict": "BORDERLINE",
+    "expected_mitre": "T1021.002",
+    "alert": {
+      "rule_id": "60199",
+      "rule_description": "Conexion SMB administrativa (admin$) desde WIN-SRV01 hacia WIN-DB02, cuenta admin valida, pero es la primera vez que se observa este par de hosts",
+      "agent_name": "WIN-SRV01",
+      "raw": { "source_host": "WIN-SRV01", "dest_host": "WIN-DB02", "account": "domain_admin", "first_seen_pair": true }
+    }
+  },
+  {
+    "case_id": "bd-03-exfil-servicio-cloud-conocido",
+    "expected_verdict": "BORDERLINE",
+    "expected_mitre": "T1041",
+    "alert": {
+      "rule_id": "60310",
+      "rule_description": "Transferencia saliente de 800MB hacia dominio de Google Drive, usuario de finanzas, sin politica explicita que prohiba el uso de la herramienta",
+      "agent_name": "WIN-FIN04",
+      "raw": { "bytes_out": 800000000, "destination_domain": "drive.google.com", "user": "finance_analyst" }
+    }
+  }
+]

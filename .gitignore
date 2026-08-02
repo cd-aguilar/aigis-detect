@@ -1,0 +1,11 @@
+.venv/
+venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+*.log
+data/raw/*
+!data/raw/.gitkeep
+.env
+velociraptor/server.config.yaml
+.claude/

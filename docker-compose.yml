@@ -1,0 +1,277 @@
+name: aigis-detect
+
+# ─────────────────────────────────────────────────────────────────────────
+# Aigis-Detect · Fase 1 — Homelab SOC
+#
+# Elastic Stack (Elasticsearch + Kibana) como único storage/visualización.
+# Wazuh Manager SIN su indexer nativo (OpenSearch): las alertas se leen de
+# /var/ossec/logs/alerts/alerts.json y se envían a Elasticsearch vía Filebeat
+# (módulo wazuh), evitando correr dos motores de búsqueda en paralelo.
+# TheHive (+ Cassandra) como SOAR case management, n8n como orquestador de
+# playbooks, Velociraptor para DFIR, Redis para deduplicación de alertas.
+#
+# Requisitos mínimos recomendados: 16 GB RAM, 4 vCPU, Docker Compose v2.
+# Antes del primer `docker compose up`, generar el config de Velociraptor
+# (ver README.md, paso "Primer arranque").
+# ─────────────────────────────────────────────────────────────────────────
+
+x-es-env: &es-common
+  discovery.type: single-node
+  xpack.security.enabled: "false"   # lab/dev only — activar en Fase 3 (AWS)
+  ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+
+services:
+
+  # ── SIEM: Elastic Stack ────────────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-8.13.4}
+    container_name: aigis-elasticsearch
+    environment:
+      <<: *es-common
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELASTIC_VERSION:-8.13.4}
+    container_name: aigis-kibana
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── SIEM: Wazuh Manager (sin wazuh-indexer nativo) ─────────────────────
+  wazuh-manager:
+    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.7.5}
+    container_name: aigis-wazuh-manager
+    hostname: wazuh-manager
+    environment:
+      INDEXER_URL: ""            # deshabilita el intento de conectar al indexer nativo
+      FILEBEAT_SSL_VERIFICATION_MODE: none
+    ports:
+      - "1514:1514/udp"   # agentes → manager (syslog)
+      - "1515:1515"       # registro de agentes
+      - "55000:55000"     # API de Wazuh
+    volumes:
+      - wazuh-config:/var/ossec/etc
+      - wazuh-logs:/var/ossec/logs
+      - wazuh-queue:/var/ossec/queue
+      - wazuh-var-multigroups:/var/ossec/var/multigroups
+      - wazuh-integrations:/var/ossec/integrations
+      - wazuh-active-response:/var/ossec/active-response/bin
+      - wazuh-agentless:/var/ossec/agentless
+      - wazuh-wodles:/var/ossec/wodles
+      - wazuh-stats:/var/ossec/stats
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # Filebeat lee alerts.json del manager y lo envía a Elasticsearch
+  # (reemplaza al wazuh-indexer nativo — un solo motor de búsqueda: ES).
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:${ELASTIC_VERSION:-8.13.4}
+    container_name: aigis-filebeat
+    user: root
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - wazuh-logs:/var/ossec/logs:ro
+    command: ["--strict.perms=false"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      wazuh-manager:
+        condition: service_started
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── DFIR ────────────────────────────────────────────────────────────
+  velociraptor:
+    image: wlambert/velociraptor:${VELOCIRAPTOR_VERSION:-latest}
+    container_name: aigis-velociraptor
+    entrypoint: ["sh", "-c"]
+    command:
+      - "cp /opt/velociraptor/linux/velociraptor /tmp/velo && chmod +x /tmp/velo && exec /tmp/velo --config /velociraptor/server.config.yaml frontend -v"
+    volumes:
+      - ./velociraptor:/velociraptor
+      - velociraptor-data:/velociraptor/data
+    ports:
+      - "8000:8000"    # frontend (comunicación con clientes)
+      - "8889:8889"    # GUI web
+      - "8001:8001"    # API gRPC
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── SOAR: case management ──────────────────────────────────────────
+  cassandra:
+    image: cassandra:4.1
+    container_name: aigis-cassandra
+    environment:
+      MAX_HEAP_SIZE: 1G
+      HEAP_NEWSIZE: 256M
+      CASSANDRA_CLUSTER_NAME: aigis-detect
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  thehive:
+    image: strangebee/thehive:${THEHIVE_VERSION:-5.3}
+    container_name: aigis-thehive
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      JVM_OPTS: "-Xms1g -Xmx1g"
+    command:
+      - "--secret"
+      - "${THEHIVE_SECRET:-change-me-thehive-secret}"
+      - "--cql-hostnames"
+      - "cassandra"
+      - "--index-backend"
+      - "elasticsearch"
+      - "--es-hostnames"
+      - "elasticsearch"
+    volumes:
+      - thehive-data:/opt/thp/thehive/files
+    ports:
+      - "127.0.0.1:9000:9000"
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── SOAR: orquestación de playbooks / alerting ─────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aigis-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:${N8N_VERSION:-latest}
+    container_name: aigis-n8n
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD:-change-me}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: ${TZ:-America/Bogota}
+      # Necesario para que las expresiones $env.* funcionen dentro de nodos
+      # (n8n las bloquea por default desde cierta versión) — sin esto, los
+      # nodos "Crear alerta en TheHive", "Slack - log completo" y
+      # "Telegram - alta severidad" fallan con "access to env vars denied".
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Usados por el workflow n8n/workflows/wazuh-triage-to-thehive.json vía
+      # expresiones $env.* — no se hardcodean en el JSON del workflow.
+      THEHIVE_API_KEY: ${THEHIVE_API_KEY:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID_ONCALL: ${TELEGRAM_CHAT_ID_ONCALL:-}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    ports:
+      - "5678:5678"
+    depends_on:
+      redis:
+        condition: service_started
+      thehive:
+        condition: service_started
+      agent:
+        condition: service_started
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── Fase 2: agente de triage con IA ────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aigis-ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "127.0.0.1:11435:11434"   # host 11435 -> evita choque con Ollama nativo del host (11434)
+    networks: [aigis-net]
+    restart: unless-stopped
+    # Primer arranque: docker compose exec ollama ollama pull ${OLLAMA_MODEL:-qwen3}
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: aigis-chroma
+    volumes:
+      - chroma-data:/chroma/chroma
+    ports:
+      - "127.0.0.1:8010:8000"   # host 8010 -> evita choque con Velociraptor (8000)
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aigis-agent
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ALERTS_INDEX: wazuh-alerts-*
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      CHROMA_COLLECTION: ${CHROMA_COLLECTION:-aigis_kb}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      chroma:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [aigis-net]
+    restart: unless-stopped
+
+networks:
+  aigis-net:
+    driver: bridge
+
+volumes:
+  es-data:
+  wazuh-config:
+  wazuh-logs:
+  wazuh-queue:
+  wazuh-var-multigroups:
+  wazuh-integrations:
+  wazuh-active-response:
+  wazuh-agentless:
+  wazuh-wodles:
+  wazuh-stats:
+  velociraptor-data:
+  cassandra-data:
+  thehive-data:
+  redis-data:
+  n8n-data:
+  ollama-data:
+  chroma-data:
