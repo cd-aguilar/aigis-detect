@@ -1,96 +1,98 @@
 # aigis-detect
 
-SOC Lab Portfolio — homelab local con SIEM (Elastic Stack + Wazuh Manager),
-SOAR (n8n + TheHive), DFIR (Velociraptor) y un agente de triage con IA
-(Ollama + ChromaDB + FastAPI). Fase 1 y Fase 2 verificadas end-to-end;
-falta conectar el agente al flujo SOAR (workflow n8n, ver abajo) y probarlo
-contra un n8n real. Base para el despliegue en AWS (Fase 3).
+SOC Lab Portfolio — local homelab with SIEM (Elastic Stack + Wazuh Manager),
+SOAR (n8n + TheHive), DFIR (Velociraptor), and an AI triage agent
+(Ollama + ChromaDB + FastAPI). Phase 1 and Phase 2 verified end-to-end;
+Phase 3 targets an AWS deployment.
 
-## Arquitectura Fase 1
+## Phase 1 architecture
 
-- **Elasticsearch + Kibana**: único storage y visualización.
-- **Wazuh Manager** sin su indexer nativo (OpenSearch) — las alertas se leen
-  de `alerts.json` y se envían a Elasticsearch vía **Filebeat**.
-- **TheHive + Cassandra**: gestión de casos, indexa sobre el mismo Elasticsearch.
-- **n8n**: orquestación de playbooks (SOAR) y alerting (Slack log completo,
-  Telegram solo alta severidad — se configura como credenciales dentro de n8n).
-- **Velociraptor**: DFIR / respuesta a incidentes.
-- **Redis**: deduplicación de alertas con TTL corto.
+- **Elasticsearch + Kibana**: single storage and visualization layer.
+- **Wazuh Manager** without its native indexer (OpenSearch) — alerts are read
+  from `alerts.json` and shipped to Elasticsearch via **Filebeat**.
+- **TheHive + Cassandra**: case management, indexed on the same Elasticsearch.
+- **n8n**: playbook orchestration (SOAR) and alerting (Slack full log,
+  Telegram only for high severity — configured as credentials inside n8n).
+- **Velociraptor**: DFIR / incident response.
+- **Redis**: alert deduplication with a short TTL.
 
-## Primer arranque
+## First run
 
-1. `cp .env.example .env` (PowerShell: `Copy-Item .env.example .env`) y completar
-   secretos (`THEHIVE_SECRET`, `N8N_PASSWORD`, etc).
-2. Generar el config de Velociraptor (una sola vez, antes del primer `up` —
-   usa el volumen ya definido en el compose, funciona igual en bash y PowerShell):
+1. `cp .env.example .env` (PowerShell: `Copy-Item .env.example .env`) and fill in
+   the secrets (`THEHIVE_SECRET`, `N8N_PASSWORD`, etc).
+2. Generate the Velociraptor config (one time only, before the first `up` —
+   uses the volume already defined in the compose file, works the same in bash and PowerShell):
    ```
    docker compose run --rm --entrypoint velociraptor velociraptor config generate -c /velociraptor/server.config.yaml
    ```
 3. `docker compose up -d`
-4. Ver estado de los contenedores: `docker compose ps` (todos deberían quedar
-   `running`/`healthy` en 1-3 min; Elasticsearch y Cassandra tardan más en arrancar).
-5. Verificar salud:
+4. Check container status: `docker compose ps` (everything should be
+   `running`/`healthy` within 1-3 min; Elasticsearch and Cassandra take longer to start).
+5. Verify health:
    - Kibana: http://localhost:5601
    - TheHive: http://localhost:9000
    - n8n: http://localhost:5678
    - Velociraptor GUI: https://localhost:8889
-6. Confirmar que las alertas de Wazuh llegan a Elasticsearch:
+6. Confirm Wazuh alerts are reaching Elasticsearch:
    `curl http://localhost:9200/wazuh-alerts-*/_search?size=1`
-7. Logs si algo no levanta: `docker compose logs -f <servicio>`
-   (ej. `docker compose logs -f wazuh-manager`).
+7. Logs if something doesn't come up: `docker compose logs -f <service>`
+   (e.g. `docker compose logs -f wazuh-manager`).
 
-## Requisitos
+## Requirements
 
-Docker Compose v2, ~16 GB RAM / 4 vCPU recomendados (ES + Cassandra + Wazuh +
-TheHive corriendo juntos). Para laptops con menos RAM, bajar `ES_JAVA_OPTS`
-y `MAX_HEAP_SIZE` en `docker-compose.yml`, o comentar TheHive/Cassandra si
-no se necesita gestión de casos en esa sesión de trabajo.
+Docker Compose v2, ~16 GB RAM / 4 vCPU recommended (ES + Cassandra + Wazuh +
+TheHive running together). For laptops with less RAM, lower `ES_JAVA_OPTS`
+and `MAX_HEAP_SIZE` in `docker-compose.yml`, or comment out TheHive/Cassandra
+if case management isn't needed for that work session.
 
-## Fase 2 — agente de triage con IA
+## Phase 2 — AI triage agent
 
-Servicios nuevos en el mismo `docker-compose.yml`: `ollama`, `chroma`, `agent`
-(FastAPI, se construye desde el `Dockerfile` de la raíz). Código en `src/agent/`.
+New services in the same `docker-compose.yml`: `ollama`, `chroma`, `agent`
+(FastAPI, built from the `Dockerfile` at the repo root). Code in `src/agent/`.
 
-1. Levantar los servicios nuevos (con Fase 1 ya arriba, o solo, si no necesitás
-   el resto ahora):
+1. Start the new services (with Phase 1 already up, or standalone if you
+   don't need the rest right now):
    ```
    docker compose up -d ollama chroma agent
    ```
-2. Descargar el modelo (una sola vez):
+2. Pull the model (one time only — `qwen3:1.7b` is the default configured in
+   `.env`, small enough to run comfortably on CPU; see the performance note below):
    ```
-   docker compose exec ollama ollama pull qwen3
+   docker compose exec ollama ollama pull qwen3:1.7b
    ```
-3. Cargar la base de conocimiento en ChromaDB (corre desde el host, no en Docker):
+3. Load the knowledge base into ChromaDB (runs from the host, not in Docker):
    ```
    pip install chromadb --break-system-packages
    python scripts/seed_kb.py
    ```
-4. Probar el endpoint:
+4. Test the endpoint:
    ```
    curl -X POST http://localhost:8080/triage \
      -H "Content-Type: application/json" \
      -d '{"alert_id": "test-1", "rule_id": "100002", "rule_description": "PowerShell execution detected"}'
    ```
-5. Health check simple: `curl http://localhost:8080/health`
+5. Simple health check: `curl http://localhost:8080/health`
 
-**Estado de `data/mitre_techniques.json`:** 7 de las 8 técnicas ya tienen su
-`wazuh_rule_id` real (extraído del ruleset de Wazuh 4.7.5). Excepción:
-T1041 (Exfiltration Over C2 Channel) no tiene regla nativa aplicable en un
-homelab on-prem — requiere una regla custom en `local_rules.xml`.
+**Status of `data/mitre_techniques.json`:** 7 of the 8 techniques already have
+a real `wazuh_rule_id` (extracted from the Wazuh 4.7.5 ruleset). Exception:
+T1041 (Exfiltration Over C2 Channel) has no applicable native rule for an
+on-prem homelab — it needs a custom rule in `local_rules.xml`.
 
-**Nota de performance:** `qwen3` corriendo en CPU tarda 5-10 min por triage
-(modelo "thinking", ~1.7-2 tok/seg). Sirve para demo/portfolio; para uso en
-tiempo real habría que evaluar un modelo más chico o correr con GPU.
+**Performance note:** the full `qwen3` model running on CPU takes 5-10 min per
+triage (a "thinking" model, ~1.7-2 tok/sec). The default `qwen3:1.7b` trades
+some triage depth (it doesn't always invoke tools) for ~2 min per triage —
+good enough for demo/portfolio use; for real-time use, evaluate a smaller
+model or run on GPU.
 
-## Workflow SOAR (n8n → TheHive/Slack/Telegram)
+## SOAR workflow (n8n → TheHive/Slack/Telegram)
 
-`n8n/workflows/wazuh-triage-to-thehive.json` conecta todo lo anterior:
-alerta nueva en Elastic → agente → alerta en TheHive con el veredicto →
-Slack (siempre) → Telegram (solo alta/crítica). Pasos de import, credencial
-de Redis y variables de entorno necesarias en `n8n/README.md`.
+`n8n/workflows/wazuh-triage-to-thehive.json` wires everything above together:
+new alert in Elastic → agent → alert created in TheHive with the verdict →
+Slack (always) → Telegram (high/critical only). Import steps, Redis
+credential, and required environment variables are in `n8n/README.md`.
 
-## Próximos pasos
+## Next steps
 
-Ver `CLAUDE.md` — correr el harness de evals (`run_evaluation.py`) con
-`qwen3:1.7b`, workflow de GitHub Actions para evals, y Fase 3
-(Terraform + AWS) son los siguientes entregables.
+See `CLAUDE.md` — running the eval harness (`run_evaluation.py`) against
+`qwen3:1.7b`, a GitHub Actions workflow for evals, and Phase 3
+(Terraform + AWS) are the next deliverables.
