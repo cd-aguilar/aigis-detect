@@ -360,7 +360,16 @@ la búsqueda de roles en Detection Engineering / SOC Engineer / Security Automat
    punta. El workflow quedó **activo** (antes era manual/disparo desde la
    UI) — Schedule Trigger corriendo cada 15 min de verdad. Detalle técnico
    completo en memoria (`aigis_detect_proximos_pasos.md`).
-2. Completar los `rule UUID` reales en `data/mitre_techniques.json`.
+2. ~~Completar los `rule UUID` reales en `data/mitre_techniques.json`~~ —
+   **CERRADO (2026-08-02).** Se levantó `aigis-wazuh-manager` standalone y se
+   grepeó el ruleset por defecto de Wazuh 4.7.5 (`/var/ossec/ruleset/rules/`)
+   buscando cada técnica MITRE. 7 de las 8 técnicas tienen `wazuh_rule_id`
+   real documentado (ej. T1059.001 → rule 91823, T1110.001 → rules 5760/5763
+   compuesta por frecuencia). Excepción: **T1041 (Exfiltration Over C2
+   Channel) no tiene regla nativa aplicable** — la única coincidencia en el
+   ruleset por defecto es específica de AWS Security Lake, no sirve para un
+   homelab on-prem; requiere regla custom en `local_rules.xml`, sigue
+   pendiente si se quiere cobertura real de esa técnica.
 3. Workflow de GitHub Actions para correr los evals en CI.
 4. ~~ChromaDB / `query_knowledge_base`~~ — **CERRADO (2026-08-01).**
    `scripts/seed_kb.py` nunca se había corrido; se corrió desde el host y
@@ -371,11 +380,33 @@ la búsqueda de roles en Detection Engineering / SOC Engineer / Security Automat
    las 4 tools disponibles incluida `query_knowledge_base`. Tool confirmada
    funcionando end-to-end — el modelo decide caso a caso si la usa, mismo
    trade-off ya conocido de `qwen3:1.7b`.
-5. Correr el harness de evals (`run_evaluation.py`, dataset de 50 casos) con
-   `qwen3:1.7b` para confirmar si el trade-off de calidad (no invoca tools
-   en algunos casos, visto en la Ronda 3) afecta la precisión de forma
-   relevante — si empeora mucho, evaluar un punto medio (ej. `qwen3:4b`) o
-   aceptar la latencia de `qwen3` grande solo para casos puntuales.
+5. ~~Correr el harness de evals con `qwen3:1.7b`~~ — **CERRADO (2026-08-02),
+   resultado preocupante, no solo "regular".** Harness reducido de 12 casos
+   (`scripts/run_evaluation.py`, ver docstring — bypassea Wazuh/n8n, llama
+   `POST /triage` directo) contra el agente real:
+   - **Veredicto correcto: 6/12 (50%). Técnica MITRE correcta: 2/10 (20%).
+     Latencia promedio: 126s. 6/12 casos sin ninguna tool invocada.**
+   - El patrón no es error al azar: de los 6 casos `TRUE_POSITIVE` reales,
+     acertó 1 solo (`tp-05-borrado-event-log`) y **degradó los otros 5 a
+     `FALSE_POSITIVE`/`BORDERLINE`** (PowerShell C2, SSH bruteforce externo,
+     cuenta local sospechosa, Defender deshabilitado, exfiltración a dominio
+     nuevo). Los 6 casos `FALSE_POSITIVE`/`BORDERLINE` reales los clasificó
+     bien (6/6). **Sesgo sistemático a subestimar amenazas reales — el peor
+     tipo de error para una herramienta de SOC (falsos negativos).**
+     Resultados: `data/processed/eval_results_20260802-122436.csv`.
+   - **Se probó `qwen3:4b` como punto medio y no es viable en este host:**
+     los 12 casos fallaron con timeout (harness a 300s/caso). Logs de Ollama
+     confirman que no es un bug — el modelo genera >900 tokens a ~2.8 tok/s
+     sin terminar, muy por encima del timeout. RAM llegó a 97MB libres en
+     WSL2 (sin thrashing/crash, solo cómputo lento en CPU). Se revirtió
+     `.env` a `OLLAMA_MODEL=qwen3:1.7b`.
+   - **Decisión:** se acepta `qwen3:1.7b` (50%/126s) como el punto
+     latencia/precisión del proyecto para demo/portfolio, con la limitación
+     documentada explícitamente acá y en el README. Si se necesita mejorar
+     precisión real: forzar tool-calling obligatorio en el prompt del agente
+     (en vez de dejarlo a discreción del modelo) es la vía más barata sin
+     cambiar de modelo; `qwen3` grande (5-10 min/caso) queda como opción solo
+     para casos puntuales, no para uso continuo ni para este harness.
 6. (Opcional, baja prioridad) lock por Redis contra ejecuciones de n8n
    solapadas — documentado en `n8n/README.md`, no implementado; riesgo bajo
    con el cron a 15 min y tope de 5 items/ejecución.
