@@ -73,8 +73,10 @@ Servicios nuevos en el mismo `docker-compose.yml`: `ollama`, `chroma`, `agent`
    ```
 5. Health check simple: `curl http://localhost:8080/health`
 
-**Pendiente antes de confiar en los veredictos:** completar los `rule UUID`
-reales de Elastic/Wazuh en `data/mitre_techniques.json` (hoy tienen `TODO`).
+**Estado de `data/mitre_techniques.json`:** 7 de las 8 técnicas ya tienen su
+`wazuh_rule_id` real (extraído del ruleset de Wazuh 4.7.5). Excepción:
+T1041 (Exfiltration Over C2 Channel) no tiene regla nativa aplicable en un
+homelab on-prem — requiere una regla custom en `local_rules.xml`.
 
 **Nota de performance:** `qwen3` corriendo en CPU tarda 5-10 min por triage
 (modelo "thinking", ~1.7-2 tok/seg). Sirve para demo/portfolio; para uso en
@@ -89,6 +91,6 @@ de Redis y variables de entorno necesarias en `n8n/README.md`.
 
 ## Próximos pasos
 
-Ver `CLAUDE.md` — probar el workflow de n8n contra una instancia real,
-completar los `rule UUID`, workflow de GitHub Actions para evals, y Fase 3
+Ver `CLAUDE.md` — correr el harness de evals (`run_evaluation.py`) con
+`qwen3:1.7b`, workflow de GitHub Actions para evals, y Fase 3
 (Terraform + AWS) son los siguientes entregables.
