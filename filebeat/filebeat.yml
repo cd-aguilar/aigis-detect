@@ -13,11 +13,28 @@ filebeat.inputs:
       source: wazuh
     fields_under_root: true
 
+  # Fase 3: logs del honeypot Cowrie, bajados de S3 por scripts/pull_honeypot_logs.py
+  # (servicio honeypot-puller) a data/raw/cowrie/, montado acá en /cowrie-logs.
+  - type: log
+    enabled: true
+    paths:
+      - /cowrie-logs/*.json
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    fields:
+      source: cowrie
+    fields_under_root: true
+
 processors:
   - add_host_metadata: ~
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
+  indices:
+    - index: "cowrie-alerts-%{+yyyy.MM.dd}"
+      when.equals:
+        source: "cowrie"
   index: "wazuh-alerts-%{+yyyy.MM.dd}"
 
 setup.template.enabled: false

@@ -410,7 +410,76 @@ la búsqueda de roles en Detection Engineering / SOC Engineer / Security Automat
 6. (Opcional, baja prioridad) lock por Redis contra ejecuciones de n8n
    solapadas — documentado en `n8n/README.md`, no implementado; riesgo bajo
    con el cron a 15 min y tope de 5 items/ejecución.
-7. Fase 3: Terraform + AWS + honeypot expuesto a internet.
+7. ~~Fase 3: Terraform + AWS + honeypot expuesto a internet.~~ — **CERRADO
+   (2026-08-03), pipeline honeypot→S3→homelab→Elasticsearch confirmado
+   end-to-end.** Módulo completo en `infra/aws-honeypot/` (plan aprobado
+   previamente en sesión de planning, ver README del módulo para arquitectura
+   y decisiones de seguridad/costo). `terraform apply` corrido contra la
+   cuenta AWS real (`aigis_dev`, cuenta 100747849204, región us-east-1).
+
+   **5 bugs no obvios encontrados y corregidos durante el apply/verificación**
+   (ya persistidos en `infra/aws-honeypot/main.tf` y `user_data.sh`):
+   1. **`aws_security_group` description con caracteres no-ASCII** (em-dash,
+      tildes) — AWS rechaza `GroupDescription` con `InvalidParameterValue:
+      Character sets beyond ASCII are not supported`. Cambiado a texto plano
+      en inglés.
+   2. **Puerto 22 ocupado por el `sshd` real de la AMI** — la imagen base de
+      EC2 trae `sshd` escuchando en :22 por default, y compite con el bind
+      de Cowrie (`docker run -p 22:2222` fallaba con `address already in
+      use`). Coherente con el diseño ("el 22 es 100% cebo, admin por SSM"):
+      se agregó `systemctl disable --now sshd` a `user_data.sh` antes de
+      levantar el contenedor.
+   3. **`jsonlog` de Cowrie fallaba con `PermissionError`** — la imagen
+      `cowrie/cowrie` corre como usuario no-root dentro del contenedor, y el
+      bind mount del host (creado por `root` vía `mkdir`) no le daba permiso
+      de escritura; Cowrie arrancaba pero sin loggear nada a
+      `cowrie.json` (silencioso, solo visible en `docker logs`). Fix:
+      `chmod 777` al directorio del host antes del `docker run`.
+   4. **Filtro de AMI `al2023-ami-*-x86_64` matcheaba la variante
+      ECS-optimized** (trae un `ecs-agent` que arranca solo y compite por
+      recursos) — se descubrió al ver un contenedor `ecs-agent` corriendo
+      sin haberlo pedido. Cambiado a la fuente canónica: `data
+      "aws_ssm_parameter"` sobre
+      `/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64`
+      (recomendación oficial de AWS para no depender de filtros de nombre
+      ambiguos).
+   5. **Rol IAM del EC2 solo tenía `s3:PutObject`** — `aws s3 sync` (usado
+      por el cron que sube los logs) también necesita `s3:ListBucket` para
+      saber qué objetos ya existen; sin eso fallaba con `AccessDenied` en
+      `ListObjectsV2`. Agregado `s3:ListBucket` scoped por `s3:prefix`
+      (`cowrie/*`) a la policy del rol.
+
+   Bugs 1-3 se parchearon primero en caliente vía SSM Run Command sobre la
+   instancia ya viva (iteración rápida sin recrear nada); bug 4 obligó a un
+   `terraform apply` con reemplazo de instancia (cambio de AMI) para partir
+   de un estado limpio sin el `ecs-agent` fantasma — ahí sí corrió
+   `user_data.sh` completo de punta a punta con los 3 fixes ya incluidos,
+   sin intervención manual. Bug 5 es un cambio de IAM policy, sin impacto en
+   la instancia.
+
+   **Verificación end-to-end confirmada:** conexión SSH externa real →
+   Cowrie la loggea en `cowrie.json` (formato JSON, incluye una conexión
+   real ajena desde `186.109.67.48`, no generada por esta sesión — confirma
+   que ya hay scanners de internet tocando la instancia) → cron cada 1 min
+   sube el archivo a `s3://aigis-honeypot-logs-<account-id>/cowrie/` (rol
+   IAM del EC2, sin credenciales estáticas) → `scripts/pull_honeypot_logs.py`
+   (servicio `honeypot-puller` del compose, credenciales del IAM user
+   "puller" de solo lectura) lo baja a `data/raw/cowrie/` → Filebeat (input
+   nuevo en `filebeat/filebeat.yml`, sin tocar el input de Wazuh existente)
+   lo manda a Elasticsearch, índice `cowrie-alerts-*`.
+
+   Acceso admin verificado vía **SSM Run Command** (no se probó
+   `ssm start-session` interactivo en esta sesión, pero el rol/agente están
+   confirmados operativos — mismo mecanismo). Instancia activa:
+   `i-022b9a65b44231310`, IP pública dinámica (sin Elastic IP a propósito,
+   ver README del módulo). **Sigue corriendo y facturando** (bajo, dentro de
+   free tier) — recordar `terraform destroy` en `infra/aws-honeypot/` cuando
+   no se esté usando activamente para portfolio/demo.
+
+   Alcance actual: standalone, no integrado al pipeline de triage IA/n8n
+   (los ataques reales del honeypot no generan alertas en TheHive/Slack/
+   Telegram todavía) — decisión de scope tomada en el planning original,
+   sigue vigente.
 8. TryHackMe SOC Level 1 en paralelo, para alimentar casos de prueba reales al agente.
 
 ## Notas de entorno

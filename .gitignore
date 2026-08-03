@@ -9,3 +9,11 @@ data/raw/*
 .env
 velociraptor/server.config.yaml
 .claude/
+
+# Terraform (infra/aws-honeypot/) — .terraform.lock.hcl SÍ se commitea (pinea versiones de provider)
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.tfvars
+infra/**/tfplan*
+infra/**/crash.log

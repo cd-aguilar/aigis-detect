@@ -91,6 +91,7 @@ services:
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - wazuh-logs:/var/ossec/logs:ro
+      - ./data/raw/cowrie:/cowrie-logs:ro
     command: ["--strict.perms=false"]
     depends_on:
       elasticsearch:
@@ -250,6 +251,23 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:8080:8080"
+    networks: [aigis-net]
+    restart: unless-stopped
+
+  # ── Fase 3: honeypot AWS — trae los logs de Cowrie a este homelab ─────
+  honeypot-puller:
+    image: python:3.11-slim
+    container_name: aigis-honeypot-puller
+    working_dir: /app
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./data/raw/cowrie:/app/data/raw/cowrie
+    environment:
+      HONEYPOT_S3_BUCKET: ${HONEYPOT_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      HONEYPOT_AWS_ACCESS_KEY_ID: ${HONEYPOT_AWS_ACCESS_KEY_ID:-}
+      HONEYPOT_AWS_SECRET_ACCESS_KEY: ${HONEYPOT_AWS_SECRET_ACCESS_KEY:-}
+    command: ["sh", "-c", "pip install --quiet boto3 && python scripts/pull_honeypot_logs.py"]
     networks: [aigis-net]
     restart: unless-stopped
 
