@@ -1,0 +1,83 @@
+name: Eval harness (agente de triage)
+
+# Manual (workflow_dispatch) + semanal (cron). No corre en cada push: cada
+# corrida levanta Elasticsearch + Ollama + Chroma + el agente y tarda
+# ~25-30 min (12 casos a ~126s/caso con qwen3:1.7b) — no tiene sentido
+# pagar ese tiempo por commits que no tocan al agente.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 6 * * 1" # lunes 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  run-eval-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OLLAMA_MODEL: qwen3:1.7b
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias del harness
+        run: pip install --quiet -r scripts/requirements.txt requests chromadb
+
+      - name: Levantar elasticsearch + ollama + chroma + agent
+        run: docker compose up -d agent
+
+      - name: Esperar a Elasticsearch
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9200/_cluster/health && exit 0
+            sleep 5
+          done
+          echo "Elasticsearch no respondió a tiempo" >&2
+          exit 1
+
+      - name: Esperar a Ollama
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11435/api/tags && exit 0
+            sleep 5
+          done
+          echo "Ollama no respondió a tiempo" >&2
+          exit 1
+
+      - name: Bajar el modelo de Ollama
+        run: docker compose exec -T ollama ollama pull "$OLLAMA_MODEL"
+
+      - name: Cargar la base de conocimiento (ChromaDB)
+        run: python scripts/seed_kb.py
+        env:
+          CHROMA_PORT_HOST: "8010"
+
+      - name: Esperar a que el agente responda /health
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/health && exit 0
+            sleep 5
+          done
+          echo "El agente no respondió a tiempo" >&2
+          exit 1
+
+      - name: Correr el harness de evaluación
+        run: python scripts/run_evaluation.py --agent-url http://localhost:8080/triage
+
+      - name: Logs del agente (si algo falló)
+        if: failure()
+        run: docker compose logs agent --tail 200
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: data/processed/eval_results_*.csv
+          retention-days: 90
