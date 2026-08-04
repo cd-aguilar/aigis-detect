@@ -71,9 +71,16 @@ jobs:
       - name: Correr el harness de evaluación
         run: python scripts/run_evaluation.py --agent-url http://localhost:8080/triage
 
-      - name: Logs del agente (si algo falló)
-        if: failure()
-        run: docker compose logs agent --tail 200
+      - name: Diagnóstico del runner (RAM/disco/contenedores)
+        if: always()
+        run: |
+          echo "--- free -h ---"; free -h
+          echo "--- df -h ---"; df -h
+          echo "--- docker stats --no-stream ---"; docker stats --no-stream
+
+      - name: Logs de agent/ollama/elasticsearch/chroma
+        if: always()
+        run: docker compose logs agent ollama elasticsearch chroma --tail 300
 
       - uses: actions/upload-artifact@v4
         if: always()

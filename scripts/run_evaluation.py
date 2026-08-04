@@ -117,6 +117,7 @@ def main() -> int:
     mitre_hits = sum(1 for r in mitre_cases if r["mitre_match"])
     avg_latency = sum(r["latency_s"] for r in results) / total if total else 0
     tool_calls_empty = sum(1 for r in results if not r["tool_calls"])
+    error_cases = [r["case_id"] for r in results if r["actual_verdict"] == "ERROR"]
 
     print("\n--- Resumen ---")
     print(f"Veredicto correcto: {verdict_hits}/{total} ({verdict_hits/total*100:.0f}%)")
@@ -125,6 +126,11 @@ def main() -> int:
     print(f"Latencia promedio: {avg_latency:.1f}s")
     print(f"Casos sin ninguna tool invocada: {tool_calls_empty}/{total}")
     print(f"Resultados: {out_path}")
+
+    if error_cases:
+        print(f"\nERROR: {len(error_cases)}/{total} casos fallaron a nivel de request (no es un MISS de "
+              f"veredicto, es una falla de infraestructura): {', '.join(error_cases)}", file=sys.stderr)
+        return 1
     return 0
 
 
