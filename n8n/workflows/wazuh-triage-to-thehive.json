@@ -6,11 +6,17 @@
       "name": "Cada 15 minutos",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "rule": {
           "interval": [
-            { "field": "minutes", "minutesInterval": 15 }
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
           ]
         }
       }
@@ -20,7 +26,10 @@
       "name": "Buscar alertas nuevas en Elastic",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 0],
+      "position": [
+        660,
+        0
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://elasticsearch:9200/wazuh-alerts-*/_search",
@@ -35,7 +44,10 @@
       "name": "Separar alertas",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
-      "position": [440, 0],
+      "position": [
+        880,
+        0
+      ],
       "parameters": {
         "fieldToSplitOut": "hits.hits",
         "options": {}
@@ -46,7 +58,10 @@
       "name": "Limitar items por ejecución",
       "type": "n8n-nodes-base.limit",
       "typeVersion": 1,
-      "position": [660, 0],
+      "position": [
+        1100,
+        0
+      ],
       "parameters": {
         "maxItems": 5,
         "keep": "firstItems"
@@ -57,7 +72,10 @@
       "name": "Loop Over Items",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [880, 0],
+      "position": [
+        1320,
+        0
+      ],
       "parameters": {
         "batchSize": 1,
         "options": {}
@@ -68,7 +86,10 @@
       "name": "Fin del ciclo",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [880, -260],
+      "position": [
+        1320,
+        -260
+      ],
       "parameters": {}
     },
     {
@@ -76,7 +97,10 @@
       "name": "Fin - severidad normal",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2640, -20],
+      "position": [
+        2640,
+        -20
+      ],
       "parameters": {}
     },
     {
@@ -84,7 +108,10 @@
       "name": "Redis - ya procesada?",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [660, 0],
+      "position": [
+        660,
+        0
+      ],
       "parameters": {
         "operation": "get",
         "propertyName": "value",
@@ -96,7 +123,10 @@
       "name": "Ya procesada?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [880, 0],
+      "position": [
+        880,
+        0
+      ],
       "parameters": {
         "conditions": {
           "combinator": "and",
@@ -105,10 +135,16 @@
               "id": "cond-empty",
               "leftValue": "={{$json.value}}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "empty" }
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
             }
           ],
-          "options": { "caseSensitive": true, "typeValidation": "strict" }
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
         },
         "options": {}
       }
@@ -118,7 +154,10 @@
       "name": "Redis - marcar procesada",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
-      "position": [1100, -120],
+      "position": [
+        1100,
+        -120
+      ],
       "parameters": {
         "operation": "set",
         "key": "=aigis:dedup:{{$('Separar alertas').item.json._id}}",
@@ -132,7 +171,10 @@
       "name": "Armar AlertInput",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1320, -120],
+      "position": [
+        1320,
+        -120
+      ],
       "parameters": {
         "mode": "manual",
         "assignments": {
@@ -183,7 +225,10 @@
       "name": "Llamar agente /triage",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1540, -120],
+      "position": [
+        1540,
+        -120
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://agent:8080/triage",
@@ -200,7 +245,10 @@
       "name": "Mapear severidad TheHive",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1760, -120],
+      "position": [
+        1760,
+        -120
+      ],
       "parameters": {
         "mode": "manual",
         "assignments": {
@@ -269,15 +317,24 @@
       "name": "Crear alerta en TheHive",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1980, -120],
+      "position": [
+        1980,
+        -120
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://thehive:9000/api/v1/alert",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{$env.THEHIVE_API_KEY}}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.THEHIVE_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -291,7 +348,10 @@
       "name": "Slack - log completo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2200, -120],
+      "position": [
+        2200,
+        -120
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{$env.SLACK_WEBHOOK_URL}}",
@@ -306,7 +366,10 @@
       "name": "Es alta severidad?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2420, -120],
+      "position": [
+        2420,
+        -120
+      ],
       "parameters": {
         "conditions": {
           "combinator": "and",
@@ -315,10 +378,17 @@
               "id": "cond-high",
               "leftValue": "={{$('Mapear severidad TheHive').item.json.is_high_severity}}",
               "rightValue": "",
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
-          "options": { "caseSensitive": true, "typeValidation": "strict" }
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
         },
         "options": {}
       }
@@ -328,7 +398,10 @@
       "name": "Telegram - alta severidad",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2640, -220],
+      "position": [
+        2640,
+        -220
+      ],
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
@@ -343,70 +416,360 @@
       "name": "Fin - alerta ya procesada",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1100, 140],
+      "position": [
+        1100,
+        140
+      ],
       "parameters": {}
+    },
+    {
+      "id": "n19",
+      "name": "Redis - intentar lock de ejecución",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "aigis:workflow:lock"
+      }
+    },
+    {
+      "id": "n20",
+      "name": "Ejecución en curso?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-lock-empty",
+              "leftValue": "={{$json.value}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty"
+              }
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n21",
+      "name": "Redis - marcar lock de ejecución",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        660,
+        -120
+      ],
+      "parameters": {
+        "operation": "set",
+        "key": "aigis:workflow:lock",
+        "value": "1",
+        "expire": true,
+        "ttl": 7200
+      }
+    },
+    {
+      "id": "n22",
+      "name": "Fin - ejecución solapada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        140
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "n23",
+      "name": "Redis - liberar lock de ejecución",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -260
+      ],
+      "parameters": {
+        "operation": "delete",
+        "key": "aigis:workflow:lock"
+      }
     }
   ],
   "connections": {
     "Cada 15 minutos": {
-      "main": [[{ "node": "Buscar alertas nuevas en Elastic", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Redis - intentar lock de ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Buscar alertas nuevas en Elastic": {
-      "main": [[{ "node": "Separar alertas", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Separar alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Separar alertas": {
-      "main": [[{ "node": "Limitar items por ejecución", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Limitar items por ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Limitar items por ejecución": {
-      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Loop Over Items": {
       "main": [
-        [{ "node": "Fin del ciclo", "type": "main", "index": 0 }],
-        [{ "node": "Redis - ya procesada?", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Redis - liberar lock de ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis - ya procesada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Redis - ya procesada?": {
-      "main": [[{ "node": "Ya procesada?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Ya procesada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Ya procesada?": {
       "main": [
-        [{ "node": "Redis - marcar procesada", "type": "main", "index": 0 }],
-        [{ "node": "Fin - alerta ya procesada", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Redis - marcar procesada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fin - alerta ya procesada",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Fin - alerta ya procesada": {
-      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Redis - marcar procesada": {
-      "main": [[{ "node": "Armar AlertInput", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Armar AlertInput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Armar AlertInput": {
-      "main": [[{ "node": "Llamar agente /triage", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Llamar agente /triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Llamar agente /triage": {
-      "main": [[{ "node": "Mapear severidad TheHive", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Mapear severidad TheHive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Mapear severidad TheHive": {
-      "main": [[{ "node": "Crear alerta en TheHive", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Crear alerta en TheHive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Crear alerta en TheHive": {
-      "main": [[{ "node": "Slack - log completo", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Slack - log completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Slack - log completo": {
-      "main": [[{ "node": "Es alta severidad?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Es alta severidad?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Es alta severidad?": {
       "main": [
-        [{ "node": "Telegram - alta severidad", "type": "main", "index": 0 }],
-        [{ "node": "Fin - severidad normal", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Telegram - alta severidad",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fin - severidad normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Telegram - alta severidad": {
-      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Fin - severidad normal": {
-      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - intentar lock de ejecución": {
+      "main": [
+        [
+          {
+            "node": "Ejecución en curso?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecución en curso?": {
+      "main": [
+        [
+          {
+            "node": "Redis - marcar lock de ejecución",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fin - ejecución solapada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - marcar lock de ejecución": {
+      "main": [
+        [
+          {
+            "node": "Buscar alertas nuevas en Elastic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis - liberar lock de ejecución": {
+      "main": [
+        [
+          {
+            "node": "Fin del ciclo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
