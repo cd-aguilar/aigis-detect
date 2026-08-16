@@ -187,6 +187,9 @@ services:
       # nodos "Crear alerta en TheHive", "Slack - log completo" y
       # "Telegram - alta severidad" fallan con "access to env vars denied".
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
       # Usados por el workflow n8n/workflows/wazuh-triage-to-thehive.json vía
       # expresiones $env.* — no se hardcodean en el JSON del workflow.
       THEHIVE_API_KEY: ${THEHIVE_API_KEY:-}

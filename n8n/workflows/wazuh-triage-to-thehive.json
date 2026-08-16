@@ -2,14 +2,6 @@
   "name": "Aigis-Detect - Wazuh -> Agente -> TheHive/Slack/Telegram",
   "nodes": [
     {
-      "id": "n1",
-      "name": "Cada 15 minutos",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        0
-      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -19,17 +11,17 @@
             }
           ]
         }
-      }
+      },
+      "id": "n1",
+      "name": "Cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
     },
     {
-      "id": "n2",
-      "name": "Buscar alertas nuevas en Elastic",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        660,
-        0
-      ],
       "parameters": {
         "method": "POST",
         "url": "http://elasticsearch:9200/wazuh-alerts-*/_search",
@@ -37,96 +29,101 @@
         "specifyBody": "json",
         "jsonBody": "{\n  \"query\": {\n    \"range\": { \"@timestamp\": { \"gte\": \"now-16m\" } }\n  },\n  \"size\": 5,\n  \"sort\": [{ \"@timestamp\": \"asc\" }]\n}",
         "options": {}
-      }
+      },
+      "id": "n2",
+      "name": "Buscar alertas nuevas en Elastic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ]
     },
     {
+      "parameters": {
+        "fieldToSplitOut": "hits.hits",
+        "options": {}
+      },
       "id": "n3",
       "name": "Separar alertas",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        880,
+        448,
         0
-      ],
-      "parameters": {
-        "fieldToSplitOut": "hits.hits",
-        "options": {}
-      }
+      ]
     },
     {
+      "parameters": {
+        "maxItems": 5
+      },
       "id": "n15",
       "name": "Limitar items por ejecución",
       "type": "n8n-nodes-base.limit",
       "typeVersion": 1,
       "position": [
-        1100,
+        672,
         0
-      ],
-      "parameters": {
-        "maxItems": 5,
-        "keep": "firstItems"
-      }
+      ]
     },
     {
+      "parameters": {
+        "options": {}
+      },
       "id": "n16",
       "name": "Loop Over Items",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1320,
+        880,
         0
-      ],
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      }
+      ]
     },
     {
+      "parameters": {},
       "id": "n18",
       "name": "Fin del ciclo",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1320,
-        -260
-      ],
-      "parameters": {}
+        880,
+        -256
+      ]
     },
     {
+      "parameters": {},
       "id": "n17",
       "name": "Fin - severidad normal",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
         2640,
-        -20
-      ],
-      "parameters": {}
+        -16
+      ]
     },
     {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "=aigis:dedup:{{$json._id}}",
+        "options": {}
+      },
       "id": "n4",
       "name": "Redis - ya procesada?",
       "type": "n8n-nodes-base.redis",
       "typeVersion": 1,
       "position": [
-        660,
+        672,
         0
       ],
-      "parameters": {
-        "operation": "get",
-        "propertyName": "value",
-        "key": "=aigis:dedup:{{$json._id}}"
+      "credentials": {
+        "redis": {
+          "id": "VCpEBE6zYDlSgNTQ",
+          "name": "Redis account"
+        }
       }
     },
     {
-      "id": "n5",
-      "name": "Ya procesada?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        880,
-        0
-      ],
       "parameters": {
         "conditions": {
           "combinator": "and",
@@ -143,40 +140,47 @@
           ],
           "options": {
             "caseSensitive": true,
-            "typeValidation": "strict"
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
           }
         },
         "options": {}
-      }
+      },
+      "id": "n5",
+      "name": "Ya procesada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ]
     },
     {
-      "id": "n6",
-      "name": "Redis - marcar procesada",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [
-        1100,
-        -120
-      ],
       "parameters": {
         "operation": "set",
         "key": "=aigis:dedup:{{$('Separar alertas').item.json._id}}",
         "value": "1",
         "expire": true,
         "ttl": 86400
+      },
+      "id": "n6",
+      "name": "Redis - marcar procesada",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        -128
+      ],
+      "credentials": {
+        "redis": {
+          "id": "VCpEBE6zYDlSgNTQ",
+          "name": "Redis account"
+        }
       }
     },
     {
-      "id": "n7",
-      "name": "Armar AlertInput",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1320,
-        -120
-      ],
       "parameters": {
-        "mode": "manual",
         "assignments": {
           "assignments": [
             {
@@ -218,17 +222,17 @@
           ]
         },
         "options": {}
-      }
+      },
+      "id": "n7",
+      "name": "Armar AlertInput",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        -128
+      ]
     },
     {
-      "id": "n8",
-      "name": "Llamar agente /triage",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1540,
-        -120
-      ],
       "parameters": {
         "method": "POST",
         "url": "http://agent:8080/triage",
@@ -236,21 +240,20 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ alert_id: $json.alert_id, rule_id: $json.rule_id, rule_description: $json.rule_description, timestamp: $json.timestamp, agent_name: $json.agent_name, raw: $json.raw }) }}",
         "options": {
-          "timeout": 2400000
+          "timeout": 900000
         }
-      }
+      },
+      "id": "n8",
+      "name": "Llamar agente /triage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        -128
+      ]
     },
     {
-      "id": "n9",
-      "name": "Mapear severidad TheHive",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1760,
-        -120
-      ],
       "parameters": {
-        "mode": "manual",
         "assignments": {
           "assignments": [
             {
@@ -310,17 +313,17 @@
           ]
         },
         "options": {}
-      }
+      },
+      "id": "n9",
+      "name": "Mapear severidad TheHive",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1760,
+        -128
+      ]
     },
     {
-      "id": "n10",
-      "name": "Crear alerta en TheHive",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1980,
-        -120
-      ],
       "parameters": {
         "method": "POST",
         "url": "http://thehive:9000/api/v1/alert",
@@ -341,17 +344,17 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ type: 'external', source: 'aigis-detect', sourceRef: $json.alert_id, title: ($json.rule_description || 'Alerta Wazuh') + ' — ' + $json.verdict, description: $json.explanation + '\\n\\nAcción sugerida: ' + $json.suggested_action, severity: $json.thehive_severity, tags: ['aigis-detect', 'verdict:' + $json.verdict, $json.mitre_technique ? ('mitre:' + $json.mitre_technique) : 'mitre:unknown'], tlp: 2, pap: 2 }) }}",
         "options": {}
-      }
-    },
-    {
-      "id": "n11",
-      "name": "Slack - log completo",
+      },
+      "id": "n10",
+      "name": "Crear alerta en TheHive",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2200,
-        -120
-      ],
+        1984,
+        -128
+      ]
+    },
+    {
       "parameters": {
         "method": "POST",
         "url": "={{$env.SLACK_WEBHOOK_URL}}",
@@ -359,20 +362,25 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: '*Aigis-Detect* — ' + $('Mapear severidad TheHive').item.json.verdict + ' (' + $('Mapear severidad TheHive').item.json.severity + ')\\nAlerta: ' + $('Mapear severidad TheHive').item.json.rule_description + '\\nTécnica: ' + ($('Mapear severidad TheHive').item.json.mitre_technique || 'N/A') + '\\n' + $('Mapear severidad TheHive').item.json.explanation }) }}",
         "options": {}
-      }
+      },
+      "id": "n11",
+      "name": "Slack - log completo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2208,
+        -128
+      ]
     },
     {
-      "id": "n12",
-      "name": "Es alta severidad?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        2420,
-        -120
-      ],
       "parameters": {
         "conditions": {
-          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
           "conditions": [
             {
               "id": "cond-high",
@@ -385,23 +393,20 @@
               }
             }
           ],
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          }
+          "combinator": "and"
         },
         "options": {}
-      }
+      },
+      "id": "n12",
+      "name": "Es alta severidad?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2432,
+        -128
+      ]
     },
     {
-      "id": "n13",
-      "name": "Telegram - alta severidad",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2640,
-        -220
-      ],
       "parameters": {
         "method": "POST",
         "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage' }}",
@@ -409,106 +414,47 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID_ONCALL, text: '🚨 Aigis-Detect — ' + ($('Mapear severidad TheHive').item.json.severity || '').toUpperCase() + '\\n' + $('Mapear severidad TheHive').item.json.rule_description + '\\nVeredicto: ' + $('Mapear severidad TheHive').item.json.verdict + '\\nTécnica: ' + ($('Mapear severidad TheHive').item.json.mitre_technique || 'N/A') + '\\n' + $('Mapear severidad TheHive').item.json.suggested_action }) }}",
         "options": {}
-      }
+      },
+      "id": "n13",
+      "name": "Telegram - alta severidad",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        -224
+      ]
     },
     {
+      "parameters": {},
       "id": "n14",
       "name": "Fin - alerta ya procesada",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1100,
-        140
-      ],
-      "parameters": {}
+        1104,
+        144
+      ]
     },
     {
-      "id": "n19",
-      "name": "Redis - intentar lock de ejecución",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [
-        220,
-        0
-      ],
       "parameters": {
-        "operation": "get",
-        "propertyName": "value",
-        "key": "aigis:workflow:lock"
-      }
-    },
-    {
-      "id": "n20",
-      "name": "Ejecución en curso?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
+        "method": "POST",
+        "url": "http://host.docker.internal:5679/webhook/soc-alert",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ alert_id: $('Mapear severidad TheHive').item.json.alert_id, alert_raw: '[Wazuh ALERT] Host: ' + ($('Armar AlertInput').item.json.agent_name || 'unknown') + '\\nRule: ' + $('Mapear severidad TheHive').item.json.rule_description + '\\nAigis-Detect verdict: ' + $('Mapear severidad TheHive').item.json.verdict + ' (severity: ' + $('Mapear severidad TheHive').item.json.severity + ')' + '\\nMITRE: ' + ($('Mapear severidad TheHive').item.json.mitre_technique || 'unknown') + '\\nExplanation: ' + $('Mapear severidad TheHive').item.json.explanation + '\\nRaw event: ' + JSON.stringify($('Armar AlertInput').item.json.raw) }) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "n24",
+      "name": "Escalar a agent-orchestrator-soc (Tier 2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        440,
-        0
+        2640,
+        20
       ],
-      "parameters": {
-        "conditions": {
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "cond-lock-empty",
-              "leftValue": "={{$json.value}}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "empty"
-              }
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          }
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "n21",
-      "name": "Redis - marcar lock de ejecución",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [
-        660,
-        -120
-      ],
-      "parameters": {
-        "operation": "set",
-        "key": "aigis:workflow:lock",
-        "value": "1",
-        "expire": true,
-        "ttl": 7200
-      }
-    },
-    {
-      "id": "n22",
-      "name": "Fin - ejecución solapada",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        660,
-        140
-      ],
-      "parameters": {}
-    },
-    {
-      "id": "n23",
-      "name": "Redis - liberar lock de ejecución",
-      "type": "n8n-nodes-base.redis",
-      "typeVersion": 1,
-      "position": [
-        880,
-        -260
-      ],
-      "parameters": {
-        "operation": "delete",
-        "key": "aigis:workflow:lock"
-      }
+      "continueOnFail": true
     }
   ],
   "connections": {
@@ -516,7 +462,7 @@
       "main": [
         [
           {
-            "node": "Redis - intentar lock de ejecución",
+            "node": "Buscar alertas nuevas en Elastic",
             "type": "main",
             "index": 0
           }
@@ -560,7 +506,7 @@
       "main": [
         [
           {
-            "node": "Redis - liberar lock de ejecución",
+            "node": "Fin del ciclo",
             "type": "main",
             "index": 0
           }
@@ -687,6 +633,11 @@
             "node": "Telegram - alta severidad",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Escalar a agent-orchestrator-soc (Tier 2)",
+            "type": "main",
+            "index": 0
           }
         ],
         [
@@ -720,51 +671,11 @@
         ]
       ]
     },
-    "Redis - intentar lock de ejecución": {
+    "Escalar a agent-orchestrator-soc (Tier 2)": {
       "main": [
         [
           {
-            "node": "Ejecución en curso?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ejecución en curso?": {
-      "main": [
-        [
-          {
-            "node": "Redis - marcar lock de ejecución",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fin - ejecución solapada",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Redis - marcar lock de ejecución": {
-      "main": [
-        [
-          {
-            "node": "Buscar alertas nuevas en Elastic",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Redis - liberar lock de ejecución": {
-      "main": [
-        [
-          {
-            "node": "Fin del ciclo",
+            "node": "Loop Over Items",
             "type": "main",
             "index": 0
           }
@@ -773,6 +684,7 @@
     }
   },
   "pinData": {},
+  "active": true,
   "settings": {
     "executionOrder": "v1"
   }
