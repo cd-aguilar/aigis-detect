@@ -1,4 +1,4 @@
-# aigis-detect
+—# aigis-detect
 
 SOC Lab Portfolio — local homelab with SIEM (Elastic Stack + Wazuh Manager),
 SOAR (n8n + TheHive), DFIR (Velociraptor), and an AI triage agent
@@ -6,6 +6,46 @@ SOAR (n8n + TheHive), DFIR (Velociraptor), and an AI triage agent
 Phase 3 targets an AWS deployment.
 
 ## Phase 1 architecture
+
+```mermaid
+flowchart LR
+    subgraph DET["Detection"]
+        WM["Wazuh Manager"] -- "alerts.json" --> FB["Filebeat"]
+        FB --> ES[("Elasticsearch")]
+        ES --> KB["Kibana"]
+    end
+
+    subgraph AI["AI Triage - Phase 2"]
+        ES --> AGENT["FastAPI Agent"]
+        AGENT <--> OLLAMA["Ollama (Qwen3)"]
+        AGENT <--> CHROMA[("ChromaDB")]
+    end
+
+    subgraph SOAR["SOAR / Response"]
+        AGENT --> N8N["n8n Playbooks"]
+        N8N --> HIVE["TheHive + Cassandra"]
+        N8N --> SLACK["Slack (full log)"]
+        N8N --> TG["Telegram (High/Critical)"]
+    end
+
+    VELO["Velociraptor (DFIR)"]
+    REDIS[("Redis - dedup TTL")]
+
+    REDIS -.-> WM
+    N8N -.-> VELO
+```
+
+*Diagram reflects Phase 1 (SIEM/SOAR/DFIR) and Phase 2 (AI triage agent), both verified end-to-end. Phase 3 (AWS honeypot deployment) is in progress and not yet in this diagram.*
+
+## Metrics (measured)
+
+| Metric | Value | Source |
+|---|---|---|
+| MITRE ATT&CK technique coverage | 7 / 8 techniques mapped to a real Wazuh rule ID | `data/mitre_techniques.json` |
+| AI triage latency (default model, `qwen3:1.7b`) | ~2 min / triage | measured on CPU, no GPU |
+| AI triage latency (full `qwen3`, deeper reasoning) | 5-10 min / triage (~1.7-2 tok/sec) | measured on CPU, no GPU |
+
+These are current, self-measured numbers from running the stack locally — not a formal benchmark suite yet. See `CLAUDE.md` for the planned `run_evaluation.py` harness (next step, tracked in Roadmap below).
 
 - **Elasticsearch + Kibana**: single storage and visualization layer.
 - **Wazuh Manager** without its native indexer (OpenSearch) — alerts are read
