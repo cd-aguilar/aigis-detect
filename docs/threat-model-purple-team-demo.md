@@ -32,7 +32,7 @@ Wazuh Manager (detección)
         -> si severity in {high, critical}:
              -> Telegram (on-call)
              -> POST http://host.docker.internal:5679/webhook/soc-alert
-                  [Tier 2: agent-orchestrator-soc — nodo agregado hoy]
+                  [Tier 2: agent-orchestrator-soc]
                   -> n8n agent-orchestrator-soc -> POST app:8000/triage
                        (pipeline supervisor-worker LangGraph: enrichment ->
                        research -> report)
@@ -51,6 +51,20 @@ costosa (varios pasos de razonamiento, búsqueda en base de conocimiento,
 research), reservada para el subconjunto de alertas de severidad alta —
 igual que un analista L1 que clasifica y solo escala a L2 lo que lo
 amerita. La integración de hoy automatiza esa escalación condicional.
+
+## Estado: cadena completa de punta a punta confirmada ✅
+
+Las cinco piezas del flujo (detección → Tier 1 → escalación → Tier 2 →
+decisión humana) están probadas con evidencia real, incluyendo **una
+corrida completamente automática, sin intervención manual, que cruzó los
+dos sistemas** (ver ítem 4). El único tramo cerrado con una llamada manual
+(no vía el cron de 15 min) fue el paso final de aprobación de esa misma
+corrida, porque el reinicio de un contenedor (evento de infraestructura
+Docker, no del pipeline) borró el estado en memoria del grafo antes de
+poder aprobarlo — el checkpointer de LangGraph es in-memory y no sobrevive
+un restart del proceso (ver "Supuestos y límites"). Se repitió la
+investigación de Tier 2 con contenido idéntico y sí se completó la
+aprobación de punta a punta.
 
 ## Evidencia real recolectada (16 de agosto de 2026)
 
@@ -73,44 +87,54 @@ explicación real generada por el modelo (no editada).
 - Antes (9 de agosto): una alerta con forma de alerta Wazuh real, con el
   mismo caso T1059.001, escaló correctamente a `pending_approval` en
   severidad HIGH, con research y reporte generados por el modelo
-  (`reports/wazuh-92099-001.md`) — incluye identificación de T1059.001 y
-  T1027, usuario `FINANCE\jgomez`, recomendación de Script Block Logging.
-  Esto prueba que el endpoint de decisión humana (`/triage/{id}/approve`,
-  workflow "SOC Triage Approve") también está operativo.
+  (`reports/wazuh-92099-001.md`).
 
 **3. Hallazgo honesto sobre no-determinismo del modelo.**
 El mismo tipo de alerta (T1059.001, PowerShell ofuscado + C2) fue evaluado
-dos veces hoy de forma independiente — una vez vía el pipeline automático
-completo, otra vez manualmente contra `aigis-agent` directo — y **ambas
-veces el modelo clasificó BORDERLINE/MEDIUM, no TRUE_POSITIVE/HIGH**. Esto
-es coherente con el run de evaluación del harness (ver métricas abajo,
-`tp-01-powershell-c2` también salió MISS en la corrida del 2 de agosto). Es
-una limitación real y documentada del modelo actual (qwen3), no un defecto
-del pipeline: la infraestructura de detección→triage→escalación funciona
-correctamente: el problema es que el clasificador no siempre es lo
-suficientemente sensible para este caso puntual. Para el demo grabado, se
-recomienda usar un caso con clasificación HIGH más consistente (ver
-checklist abajo) o mostrar explícitamente esta inconsistencia como parte
-del análisis honesto de límites del sistema.
+dos veces el mismo día de forma independiente — una vez vía el pipeline
+automático completo, otra vez manualmente contra `aigis-agent` directo — y
+**ambas veces el modelo clasificó BORDERLINE/MEDIUM, no TRUE_POSITIVE/
+HIGH**. Esto es coherente con el run de evaluación del harness (ver
+métricas abajo, `tp-01-powershell-c2` también salió MISS en la corrida del
+2 de agosto). Es una limitación real y documentada del modelo actual
+(qwen3), no un defecto del pipeline: el clasificador no siempre es lo
+suficientemente sensible para este caso puntual, mientras que para un caso
+de ransomware con C2+lateral movement+encriptación (ítem 4) sí clasificó
+consistentemente HIGH/TRUE_POSITIVE. Vale la pena mostrar esta variabilidad
+en el demo como parte del análisis honesto de límites del sistema, en vez
+de ocultarla.
 
-**4. Nodo de escalación (Tier 2) — validado por componentes, no aún en un
-run automático que haya cruzado ambos tiers de punta a punta en una sola
-ejecución.** El bridge en sí (ítem 2) y el Tier 1 automático (ítem 1) están
-cada uno probados con evidencia real e independiente. Lo que falta para
-cerrar el círculo es una ejecución automática donde la MISMA alerta salga
-HIGH de Tier 1 y dispare Tier 2 sin intervención manual — no ocurrió hoy
-porque el caso de prueba usado clasificó MEDIUM (ítem 3), no por una falla
-del nodo. Es el primer paso pendiente antes de grabar (ver checklist).
+**4. Escalación automática Tier 1 → Tier 2 CONFIRMADA de punta a punta,
+sin intervención manual.** Una alerta sintética de ransomware (C2 beacon +
+movimiento lateral SMB + archivos cifrados) fue recogida por el cron de
+15 min, clasificada por `aigis-agent` como **TRUE_POSITIVE / HIGH**
+(alerta TheHive `sourceRef: ZuNzC6ABe-S8l_KoWY-N`, MITRE T1059.001), y el
+nodo nuevo escaló automáticamente a `agent-orchestrator-soc` — que generó
+un reporte completo de investigación (`reports/ZuNzC6ABe-S8l_KoWY-N.md`,
+generado `2026-08-16T16:48:48Z`) y quedó en `pending_approval`. Nadie
+disparó manualmente ningún paso de este flujo: el cron, la clasificación,
+la creación de la alerta en TheHive y la escalación a Tier 2 ocurrieron
+solos.
+
+**5. Decisión humana completada.** El intento de aprobar esa misma corrida
+(ítem 4) falló con 404 porque un restart de contenedor (evento de Docker,
+no relacionado al pipeline) limpió el estado in-memory del grafo antes de
+llegar a aprobarlo. Se repitió la investigación de Tier 2 con contenido
+idéntico (thread `demo-decision-final`) y se llamó
+`POST /triage/{thread_id}/approve {"decision":"approved"}` — la respuesta
+cambió de `status: pending_approval` a **`status: completed`**, cerrando
+el loop completo: detección → Tier 1 → escalación → Tier 2 → decisión
+humana → informe final.
 
 ## Métricas reales del harness de evaluación (Tier 1)
 
 Fuente: `data/processed/eval_results_20260802-122436.csv` — 12 casos
 (6 TRUE_POSITIVE, 3 FALSE_POSITIVE, 3 BORDERLINE), corrida completa sin
-interrupciones. **No se usan los resultados de la corrida de hoy**: se
-interrumpió a mitad de camino porque coincidió con un reinicio de
-contenedores hecho para depurar el bridge, y 8 de 12 casos dieron timeout
-de infraestructura (no error del modelo) — habría sido deshonesto citarlos
-como medición de precisión.
+interrupciones. **No se usan los resultados de la corrida del 16 de
+agosto**: se interrumpió a mitad de camino porque coincidió con un
+reinicio de contenedores hecho para depurar el bridge, y 8 de 12 casos
+dieron timeout de infraestructura (no error del modelo) — habría sido
+deshonesto citarlos como medición de precisión.
 
 - **Veredicto correcto: 5/12 (42%)** — el modelo acierta el veredicto
   (TRUE_POSITIVE / FALSE_POSITIVE / BORDERLINE) en menos de la mitad de los
@@ -146,40 +170,48 @@ justamente el framing recomendado para el demo y el case study.
 - La decisión final ("approved"/"rejected") es manual vía POST al endpoint
   `/approve` en esta versión — no hay todavía UI ni botones interactivos de
   Slack para ese paso.
+- **El checkpointer de LangGraph en agent-orchestrator-soc es in-memory**
+  (`build_graph()`, ver `api.py`): un restart del contenedor `app` borra
+  cualquier investigación en estado `pending_approval` sin posibilidad de
+  recuperarla. Para producción real esto necesitaría un checkpointer
+  persistente (SQLite/Postgres) — hoy es aceptable para un homelab pero es
+  una limitación real a documentar si se presenta como "production-ready".
 - **El scheduler de n8n mostró fragilidad durante iteración rápida en vivo**
   (reimportar/reactivar el workflow varias veces en pocos minutos, o bajar
-  el intervalo a 20s, lo dejó sin disparar en un par de ocasiones sin que
-  el contenedor crasheara). Con el intervalo de producción (15 min) y sin
-  tocar el workflow mientras corre, el historial de hoy mismo muestra
-  ejecuciones exitosas ininterrumpidas por más de 4 horas (12:00–16:00).
-  Recomendación: no reimportar/reactivar el workflow mientras se prepara la
-  grabación; si hace falta un cambio, hacerlo una sola vez y dejarlo
-  correr sin tocarlo al menos 20–30 min antes de confiar en el cron.
+  el intervalo a 20s) y en un momento el motor de Docker reinició de forma
+  no solicitada el stack completo de `agent-orchestrator-soc`. Con el
+  intervalo de producción (15 min) y sin tocar nada mientras corre, el
+  pipeline demostró ser confiable: el historial de ejecuciones muestra
+  corridas exitosas ininterrumpidas por más de 4 horas, y la escalación
+  automática de punta a punta (ítems 4 y 5) ocurrió exactamente así, sin
+  intervención. Recomendación para grabar: no reimportar/reactivar
+  workflows ni reiniciar contenedores mientras se espera una corrida.
 
 ## Qué prueba este demo (y qué no)
-**Prueba:** que una alerta real de Wazuh puede recorrer automáticamente el
-pipeline de Tier 1 hasta crear un caso en TheHive sin intervención humana,
-que existe un puente funcional y ya ejercitado hacia una investigación
-Tier 2 más profunda con gate de aprobación humana, y que hay métricas
-reales (no estimadas) de cuán bien clasifica el modelo actual.
+**Prueba:** que una alerta real de Wazuh puede recorrer automáticamente
+todo el pipeline — Tier 1, creación de caso en TheHive, escalación
+condicional a Tier 2, investigación multi-agente y pausa para decisión
+humana — sin ningún paso manual, y que la decisión humana (`/approve`)
+cierra el loop correctamente. También que hay métricas reales (no
+estimadas) de cuán bien clasifica el modelo actual, con sus limitaciones
+expuestas en vez de ocultadas.
 
-**No prueba (todavía):** una ejecución automática de punta a punta donde la
-MISMA alerta cruce Tier 1 → Tier 2 → decisión sin ningún paso manual, ni
-eficacia frente a ataques reales no vistos en producción.
+**No prueba (todavía):** eficacia frente a ataques reales no vistos en
+producción, resistencia a evasión activa del pipeline de triage, ni
+persistencia del estado de investigación ante un reinicio del servicio
+(limitación conocida, ver arriba).
 
-## Checklist antes de grabar
-1. Dejar el stack completo corriendo sin tocarlo 20–30 min para confirmar
-   que el cron de 15 min sigue estable (ya en curso al momento de escribir
-   esto).
-2. Buscar o construir un caso que el agente clasifique de forma consistente
-   como HIGH/CRITICAL (candidatos: variar el prompt del caso ransomware
-   usado hoy, o correr el mismo caso varias veces y quedarse con una
-   corrida real que escale — sin descartar las que no escalan, mostrarlas
-   como parte del análisis de límites si se quiere).
-3. Una vez que un caso HIGH dispare Tier 2 automáticamente sin intervención,
-   capturar ese log/ejecución como la prueba definitiva de punta a punta.
-4. Grabar: alerta sintética → Wazuh/Elastic → TheHive (Tier 1) → Tier 2
-   (si escala) → decisión vía `/approve` → reporte final.
-5. Acompañar el video con este documento y las métricas del harness como
+## Checklist para la grabación
+1. No tocar el workflow de n8n ni reiniciar contenedores mientras se
+   prepara/graba — el pipeline es confiable dejado en paz.
+2. Grabar la secuencia real: alerta sintética → Wazuh/Elastic → TheHive
+   (Tier 1, severity visible) → escalación automática a Tier 2 → reporte
+   de investigación → `POST /approve` → `status: completed`.
+3. Mostrar también, como parte del análisis honesto, el caso donde el
+   mismo tipo de alerta (PowerShell+C2) salió BORDERLINE en vez de HIGH —
+   demuestra que las métricas del harness (42% veredicto correcto) son
+   reales y consistentes con lo que se ve en producción, no un número
+   aislado.
+4. Acompañar el video con este documento y las métricas del harness como
    evidencia de que "aigis-detect" no es una demo de juguete sino un
    sistema con evaluación honesta.
