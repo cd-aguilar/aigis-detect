@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-16
+
+- Se amplió la documentación del README incorporando el diagrama de arquitectura del sistema, facilitando la comprensión del flujo de detección para nuevos colaboradores.
+- Se incorporaron métricas de desempeño del modelo, aportando visibilidad sobre la precisión y efectividad de la solución.
+- Se mejoró la presentación general del proyecto, reforzando su valor como referencia técnica dentro del portfolio.
+
 ## 2026-08-03
 
 - Se incorporó integración continua para ejecutar el harness de evaluación del agente, permitiendo detectar regresiones de forma automática.
