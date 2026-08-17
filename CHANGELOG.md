@@ -2,6 +2,11 @@
 
 ## 2026-08-17
 
+- Se re-validó la transición de Tier1 a Tier2 luego de resolver el crash-loop de n8n, confirmando la estabilidad del pipeline tras el fix.
+- Se actualizó la documentación técnica para reflejar el estado verificado del sistema, asegurando trazabilidad del proceso de validación post-incidente.
+
+## 2026-08-17
+
 - Se corrigió el manejo de bloques de contenido no textuales en `generate_changelog.py`, evitando fallos cuando la respuesta del modelo incluye elementos distintos a texto plano.
 - Mejora la robustez del script de generación de changelogs frente a respuestas variadas de la API, reduciendo riesgos de interrupción en la automatización del proceso.
 
