@@ -66,6 +66,32 @@ un restart del proceso (ver "Supuestos y límites"). Se repitió la
 investigación de Tier 2 con contenido idéntico y sí se completó la
 aprobación de punta a punta.
 
+**Re-verificación independiente (17 de agosto de 2026).** Se investigó una
+inconsistencia pendiente: el historial de ejecuciones de `aigis-n8n` marca
+la corrida original del ítem 4 (16 de agosto, ejecución #288) como
+`crashed` con `NodeCrashedError` ("n8n may have run out of memory") en el
+nodo de escalación — a primera vista contradice la evidencia del reporte
+real. Investigado a fondo (comparando el timestamp del crash contra el
+timestamp real de `reports/ZuNzC6ABe-S8l_KoWY-N.md`): **no es una falla
+del bridge**. `aigis-n8n` sufría en ese momento el crash-loop de
+diagnósticos corregido el mismo día en `docker-compose.yml`
+(`N8N_DIAGNOSTICS_ENABLED`/`N8N_VERSION_NOTIFICATIONS_ENABLED`/
+`N8N_TEMPLATES_ENABLED`) — el proceso murió *mientras esperaba* la
+respuesta lenta de Tier 2, después de que el receptor ya había recibido y
+procesado la request por completo. El reporte generado lo confirma.
+
+Con el fix ya aplicado, se repitió la prueba de punta a punta con una
+alerta sintética nueva inyectada en `dpkg.log` (paquete
+`aigis-tier2-verify2-*`) y se dejó correr únicamente por el cron de 15 min,
+sin ninguna intervención manual. Resultado, ejecución #355
+(2026-08-17 15:15–15:18 UTC), **sin crash esta vez**:
+verdict `TRUE_POSITIVE`/`HIGH` (T1059.001) → Telegram entregado de verdad
+(`message_id: 12` al chat real de Dario) → nodo de escalación en 85s con
+`status: pending_approval`, enrichment y research reales →
+`reports/1j5EEKAB9-YbN60pVYPK.md` generado en disco con timestamp
+coincidente. Segunda confirmación independiente de la cadena completa,
+esta vez sin el ruido del crash-loop.
+
 ## Evidencia real recolectada (16 de agosto de 2026)
 
 Todo lo listado abajo es un resultado real, no una proyección ni un dato
