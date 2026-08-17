@@ -2,6 +2,12 @@
 
 ## 2026-08-17
 
+- Se consolidó la documentación de pendientes (ítems 9-13) junto con el addendum de Tier 2 en un único documento, eliminando duplicación y fragmentación de información.
+- La unificación mejora la trazabilidad del roadmap técnico, facilitando el seguimiento de tareas pendientes y su relación con los requisitos de Tier 2.
+- Este cambio simplifica futuras actualizaciones de la documentación al centralizar el contexto relevante en una sola fuente de verdad.
+
+## 2026-08-17
+
 - Se documentó el cierre de la investigación técnica sobre el webhook Tier 2 en CLAUDE.md, consolidando hallazgos y decisiones tomadas durante el análisis.
 - Esta actualización deja registro formal del estado de la integración Tier 2, facilitando el seguimiento futuro y evitando retrabajo en próximas revisiones.
 
