@@ -549,6 +549,148 @@ la búsqueda de roles en Detection Engineering / SOC Engineer / Security Automat
    prueba y se bajó al terminar (`docker compose down` en el repo de
    `agent-orchestrator-soc`) — no queda corriendo entre sesiones.
 
+10. **Nuevo workflow SOAR: bloqueo automático de IPs maliciosas — decidido, sin
+   implementar (sesión Cowork, 2026-08-17).** Se evaluó como proyecto de
+   portfolio separado (`automated-malicious-ip-block`) pero **se descartó el
+   repo aparte**: no existe como carpeta en `Proyectos/` (verificado en esa
+   misma sesión), y crear uno cuarto fragmentaría el portfolio y duplicaría
+   llamadas a threat intel que `agent-orchestrator-soc/tools.py` ya hace
+   (AbuseIPDB + VirusTotal + OTX AlienVault). Decisión: el bloqueo real vive
+   acá, como rama nueva del SOAR que este proyecto ya es (`n8n: playbook
+   orchestration`), no como plataforma nueva.
+
+   Arquitectura propuesta:
+   - Nuevo workflow `n8n/workflows/malicious-ip-autoblock.json`, colgado del
+     mismo pipeline de alertas Wazuh→Elastic que ya dispara
+     `wazuh-triage-to-thehive.json`.
+   - Enriquecimiento en paralelo: AbuseIPDB (ya usado en el proyecto) +
+     VirusTotal (`GET /api/v3/ip_addresses/{ip}`, campo
+     `last_analysis_stats`) + GreyNoise (clasifica "ruido de internet" —
+     scanners benignos tipo Shodan/Censys — para reducir falsos positivos).
+   - Orden de decisión: GreyNoise marca "benign" → corta el flujo, no
+     bloquea. Si no, se requiere AND entre AbuseIPDB (`confidenceScore` >
+     75) y VirusTotal (≥3 motores) para auto-bloquear; si solo una fuente
+     marca la IP, va a una rama de aprobación humana (mismo patrón de nivel
+     2 ya definido en `aigis-ai-pentest`).
+   - Bloqueo real vía **Wazuh active response** (`firewall-drop` o script
+     custom), no solo una API de firewall externa — queda auditado dentro
+     de Wazuh.
+   - TTL de desbloqueo (no bloqueo permanente) + allowlist de IPs
+     internas/partners — ninguno de los dos existía en el diseño original
+     que se había discutido antes de esta sesión.
+   - Relación con `agent-orchestrator-soc`: ese repo puede disparar este
+     workflow vía webhook cuando su agente de triage decide que una IP
+     amerita bloqueo, en vez de duplicar la lógica de enrichment acá.
+   - **Sin implementar todavía.** Pendiente: crear el workflow JSON, sumar
+     credenciales de VirusTotal/GreyNoise a `.env`/`.env.example`, y decidir
+     si el active-response de Wazuh se implementa como script Python custom
+     o con uno de los módulos nativos.
+
+11. **Componente de investigación conversacional — fusión con
+    `ai-soc-analyst-assistant` (decidido, sin implementar, sesión Cowork,
+    2026-08-17).** `ai-soc-analyst-assistant` vivía como proyecto planeado
+    en `Proyectos/05-Automatizacion-n8n/` pero **nunca llegó a existir como
+    carpeta propia** (verificado en esta misma sesión). Se decidió no
+    crearlo como proyecto aparte: comparte Wazuh como SIEM real y la misma
+    categoría SOC/Blue Team que este pilar, así que fragmentarlo en un
+    cuarto repo hubiera duplicado la conexión a Wazuh y el enrichment de
+    threat intel que `agent-orchestrator-soc/tools.py` y el `agent` de este
+    repo ya resuelven — mismo criterio ya aplicado en el ítem 10 al
+    descartar `automated-malicious-ip-block` como repo separado.
+
+    En vez de eso, queda como componente nuevo dentro de `aigis-detect`:
+    `components/conversational-assistant/` (ver
+    `components/conversational-assistant/docs/arquitectura.md`). Es un chat
+    de investigación para el analista — pregunta en lenguaje natural sobre
+    alertas/IOCs, el asistente resuelve consultando Wazuh en vivo — y
+    convive con el resto del pilar (SIEM/SOAR core, agente de triage,
+    workflow de bloqueo de IPs del ítem 10) sin duplicar infraestructura.
+
+    Arquitectura propuesta: **n8n Chat Trigger → n8n Workflow → Ollama
+    (local) → MCP Tools → Wazuh**. El workflow arma el contexto, Ollama
+    corre localmente (mismo runtime que `src/agent/`, a definir si comparte
+    modelo), y un servidor MCP expone las consultas a Wazuh como tools que
+    el modelo invoca. **Sin implementar todavía** — falta diseñar el
+    workflow de n8n, definir qué queries expone el MCP server (solo
+    lectura) y decidir si comparte instancia de Ollama con el agente de
+    triage.
+
+12. **Identidad del proyecto y verificación de duplicados — cerrado (sesión
+    Cowork, 2026-08-17).** Dario preguntó si "aigis-detect" corresponde al
+    Proyecto de Claude llamado **"SentinelAgent"** (claude.ai/Cowork) y si un
+    problema de código había generado un proyecto duplicado. Verificación
+    hecha recorriendo `Proyectos/` completo en su PC vía el bridge de
+    dispositivo de Cowork:
+    - **Confirmado: son el mismo proyecto.** El título de este mismo archivo
+      ("Aigis-Detect (SentinelAgent)") ya lo dejaba explícito. El Proyecto
+      Claude "SentinelAgent" (instrucciones: "experto en Docker, SIEM,
+      Elastic, ciberseguridad, SOC engineer") es el espacio de trabajo en
+      claude.ai/Cowork para este repo.
+    - **No hay carpeta `aigis-detect` duplicada.** Solo existe esta, con git
+      sano.
+    - **Sí hay una duplicación real, mas no de aigis-detect: `aigis-control-plane`.**
+      Existe un cascarón obsoleto en
+      `03-Ciberseguridad-BlueTeam/aigis-control-plane` (creado 2026-08-16,
+      CLAUDE.md/README mínimos, sin código) y la versión real y completa
+      (con `src/aigis/`, `docs/STATE-AND-ARCHITECTURE.md`, tests, etc.) en
+      `06-Consultora-Aigis/aigis-control-plane` — parece que el proyecto se
+      migró de carpeta y quedó el cascarón viejo sin borrar. **Pendiente:**
+      decidir si se borra `03-Ciberseguridad-BlueTeam/aigis-control-plane`
+      para que otra sesión de IA no lo confunda con la versión real.
+    - **`.git-broken/` en `agent-orchestrator-soc` no está relacionado.** Ya
+      documentado en el propio TODO.md/CHANGELOG.md de ese repo como residuo
+      inerte de un `git init` fallido, seguro de borrar (`rm -rf
+      .git-broken`), gitignorado, sin efecto en `main`.
+
+13. **Revisión de arquitectura externa recibida (2026-08-17) — propuesta, sin
+    decidir todavía.** Otro agente de IA evaluó el proyecto completo
+    (arquitectura SOC 9/10, evaluación científica del agente 9.5/10,
+    viabilidad de hardware 6/10) y devolvió una consolidación extensa con
+    recomendaciones. Texto completo en
+    `docs/architecture-review-evidence-driven-2026-08-17.md`. Resumen para
+    quien retome esto:
+    - **Hallazgo central:** el eval de `qwen3:1.7b` (ítem 5 arriba: 50%
+      veredicto correcto, 20% MITRE correcto, sesgo a subestimar amenazas
+      reales) no es una debilidad a esconder — es el diferencial de
+      portfolio más fuerte del proyecto si se documenta bien ("el agente
+      falló, medimos por qué, rediseñamos la arquitectura").
+    - **Cambio arquitectónico propuesto:** pasar de `Alert → LLM → Verdict`
+      a `Alert → Evidence Builder (IOC intel + Elastic context + MITRE) →
+      EvidenceBundle → LLM Analyst → Policy Engine determinista → acción`.
+      El LLM analiza, no decide la acción final.
+    - **Tool calling obligatorio** (no discrecional) para ciertas clases de
+      alerta — el eval mostró 6/12 casos sin ninguna tool invocada.
+    - **Benchmark A/B** entre 5 baselines (rule-only, LLM sin tools, LLM +
+      tools opcionales, evidence-driven, evidence + policy) con métricas de
+      recall/FN/MITRE accuracy/latency, no solo accuracy.
+    - Dataset de 50 casos → benchmark versionado (`dataset/cases/{tp,fp,
+      borderline}/` + `manifest.yaml` + `make eval`).
+    - MITRE: migrar de las 8 técnicas hardcoded en
+      `data/mitre_techniques.json` a la fuente STIX 2.1 oficial
+      (`mitre-attack/attack-stix-data`), versionada.
+    - CI actual (`pytest` vía GitHub Actions) ampliar a evaluation gates
+      (ej. `triage_recall >= 0.90`) que hagan fallar el pipeline si un
+      cambio de prompt degrada recall — vuelve el prompt "software
+      testeable".
+    - Sobre el auto-block de IP (ítem 10): ajuste sugerido — no cortar el
+      flujo solo porque GreyNoise marque "benign" (puede coexistir con
+      comportamiento sospechoso en otro contexto); combinar las 3 fuentes en
+      un score determinista → BLOCK/REVIEW/ALLOW.
+    - **Explícitamente NO ampliar infraestructura** (nada de Splunk,
+      OpenSearch, Suricata, Zeek, Kafka, Kubernetes, LangChain, otro vector
+      DB, otro LLM, otra plataforma SOAR) — foco en rigor científico, no en
+      más herramientas. Coincide con la decisión ya tomada acá de un solo
+      repo (no fragmentar en más proyectos, ver ítem 10).
+    - Prioridad propuesta: **P0** evidence→LLM→policy + tools obligatorias +
+      benchmark A/B + métricas + CI gate; **P1** detection-as-code + MITRE
+      STIX + honeypot integrado al triage + auto-block con aprobación
+      humana + bloqueo stateful; **P2** calibración de confianza + más casos
+      de benchmark + más técnicas ATT&CK; **P3** evitar por ahora
+      (Kubernetes, LangChain, otro SIEM/LLM, Kafka, más cloud).
+    - **Pendiente:** Dario tiene que decidir qué de esto adopta antes de
+      implementar nada — esto es una propuesta externa consolidada, no un
+      plan aprobado.
+
 ## Notas de entorno
 - WSL2 configurado con `memory=12GB`, `processors=6`, `swap=4GB` en
   `C:\Users\dario\.wslconfig` — necesario para correr los 12 servicios +
