@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-17
+
+- Se corrigió el manejo de bloques de contenido no textuales en `generate_changelog.py`, evitando fallos cuando la respuesta del modelo incluye elementos distintos a texto plano.
+- Mejora la robustez del script de generación de changelogs frente a respuestas variadas de la API, reduciendo riesgos de interrupción en la automatización del proceso.
+
 ## 2026-08-16
 
 - Se amplió la documentación del README incorporando el diagrama de arquitectura del sistema, facilitando la comprensión del flujo de detección para nuevos colaboradores.
