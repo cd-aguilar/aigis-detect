@@ -2,6 +2,11 @@
 
 ## 2026-08-17
 
+- Se documentó el cierre de la investigación técnica sobre el webhook Tier 2 en CLAUDE.md, consolidando hallazgos y decisiones tomadas durante el análisis.
+- Esta actualización deja registro formal del estado de la integración Tier 2, facilitando el seguimiento futuro y evitando retrabajo en próximas revisiones.
+
+## 2026-08-17
+
 - Se re-validó la transición de Tier1 a Tier2 luego de resolver el crash-loop de n8n, confirmando la estabilidad del pipeline tras el fix.
 - Se actualizó la documentación técnica para reflejar el estado verificado del sistema, asegurando trazabilidad del proceso de validación post-incidente.
 
