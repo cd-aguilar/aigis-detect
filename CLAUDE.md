@@ -482,6 +482,73 @@ la búsqueda de roles en Detection Engineering / SOC Engineer / Security Automat
    sigue vigente.
 8. TryHackMe SOC Level 1 en paralelo, para alimentar casos de prueba reales al agente.
 
+9. **Escalación Tier 2 (`agent-orchestrator-soc`) — agregada por otra sesión
+   (16 de agosto de 2026, commits `0e7ed02`/`4a866ad`/`a5f958d`/`2a104cb`) y
+   re-verificada e investigada el 17 de agosto de 2026. CERRADO, sin bug
+   real encontrado.** Cuando `aigis-agent` clasifica una alerta como
+   `high`/`critical`, un nodo nuevo en el workflow de n8n
+   (`n8n/workflows/wazuh-triage-to-thehive.json`) hace POST a
+   `agent-orchestrator-soc` (repo hermano del portfolio, standalone en
+   `~/Proyectos/03-Ciberseguridad-BlueTeam/agent-orchestrator-soc`,
+   `host.docker.internal:5679/webhook/soc-alert`, `continueOnFail: true`
+   para no romper el pipeline principal si Tier 2 está caído). Ese
+   proyecto corre su propio pipeline LangGraph supervisor-worker
+   (enrichment → research → report) y expone `POST /triage` +
+   `POST /triage/{thread_id}/approve` para la decisión humana final.
+
+   **Investigación (17 de agosto):** el historial de ejecuciones de
+   `aigis-n8n` mostraba la única corrida que había llegado a ese nodo
+   (ejecución #288, 16 de agosto) marcada como `crashed`
+   (`NodeCrashedError`, "n8n may have run out of memory") — parecía una
+   falla real del puente Tier1→Tier2. Se descartó: el reporte generado por
+   esa corrida (`reports/ZuNzC6ABe-S8l_KoWY-N.md` en el repo de
+   `agent-orchestrator-soc`) es real y su timestamp coincide exactamente —
+   `aigis-n8n` murió por el crash-loop de diagnósticos (el mismo que
+   corrigió el commit `0e7ed02` deshabilitando
+   `N8N_DIAGNOSTICS_ENABLED`/`N8N_VERSION_NOTIFICATIONS_ENABLED`/
+   `N8N_TEMPLATES_ENABLED`) *mientras esperaba* la respuesta lenta de
+   Tier 2, después de que el receptor ya había procesado la request por
+   completo. No hay bug de payload/formato en el nodo emisor — se verificó
+   simulando la expresión JS del nodo con datos reales (produce JSON
+   válido) y con dos corridas en vivo.
+
+   Con el fix del crash-loop ya aplicado (traído por `git pull` el mismo
+   día), se repitió la prueba de punta a punta con una alerta sintética
+   nueva, disparada únicamente por el cron de 15 min sin intervención
+   manual: verdict `TRUE_POSITIVE`/`HIGH` (T1059.001) → Telegram entregado
+   de verdad (`message_id: 12`, chat real de Dario) → nodo de escalación
+   exitoso en 85s (sin crash) → `status: pending_approval` con enrichment y
+   research reales → `reports/1j5EEKAB9-YbN60pVYPK.md` generado en disco.
+   Segunda confirmación independiente de la cadena completa. Docs en
+   `docs/threat-model-purple-team-demo.md` (afirmación original de
+   `a5f958d`) confirmados como correctos — no hicieron falta correcciones,
+   solo un addendum (`2f0cc8b`) con este hallazgo.
+
+   Las "Failed to parse request body" vistas en los logs de
+   `soc-orchestrator-n8n` (la instancia n8n del otro repo) no se
+   correlacionan con ninguna de las dos corridas exitosas investigadas —
+   esa instancia tiene su propio historial de crashes ("Last session
+   crashed") separado. Queda fuera del alcance de este repo; no se tocó
+   `agent-orchestrator-soc` más allá de levantar su stack para la prueba y
+   leer (no modificar) `tools.py`/`api.py`/los workflows de n8n.
+
+   **Pendiente de limpieza manual, no es un incidente sin resolver:** el
+   reporte `reports/1j5EEKAB9-YbN60pVYPK.md` (repo `agent-orchestrator-soc`)
+   quedó en `status: pending_approval` a propósito — viene de la alerta
+   sintética de la verificación de arriba, no de un evento real, y
+   aprobarlo lo metería en el historial como si fuera un hallazgo real
+   confirmado (rompe el principio de evidencia verificable del proyecto).
+   El endpoint `/triage/{thread_id}/approve` solo acepta
+   `decision: "approved"|"rejected"` — no hay una forma de etiquetar
+   "test sintético, sin acción" sin marcarlo como una decisión real, así
+   que se dejó tal cual sin llamar ese endpoint. Si se quiere limpiar,
+   hacerlo a mano (aprobar/rechazar sabiendo que es sintético, o borrar el
+   estado directamente) — no requiere ninguna acción sobre `aigis-detect`.
+
+   Stack `soc-orchestrator-n8n`/`-app`/`-ollama` se levantó solo para esta
+   prueba y se bajó al terminar (`docker compose down` en el repo de
+   `agent-orchestrator-soc`) — no queda corriendo entre sesiones.
+
 ## Notas de entorno
 - WSL2 configurado con `memory=12GB`, `processors=6`, `swap=4GB` en
   `C:\Users\dario\.wslconfig` — necesario para correr los 12 servicios +
