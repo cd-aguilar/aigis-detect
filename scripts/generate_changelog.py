@@ -65,7 +65,8 @@ ni fecha, solo los bullets, cada uno empezando con "- "."""
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text.strip()
+    text_blocks = [block.text for block in message.content if block.type == "text"]
+    return "".join(text_blocks).strip()
 
 
 def update_changelog(summary: str):
